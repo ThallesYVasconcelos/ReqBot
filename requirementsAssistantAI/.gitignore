@@ -1,0 +1,51 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Arquivos confidenciais / secrets ###
+# Configurações locais com senhas, API keys, etc.
+/application.properties
+**/application-local.properties
+**/application-*-local.properties
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Chaves, certificados e secrets
+*.pem
+*.key
+*.keystore
+*.jks
+*.p12

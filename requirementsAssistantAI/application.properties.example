@@ -1,0 +1,22 @@
+# Nome da Aplicação
+spring.application.name=requirements-assistant-ai
+
+# Configurações do Banco de Dados (Docker)
+spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
+spring.datasource.username=postgres
+spring.datasource.password=sua_senha_aqui
+
+# Inteligência Artificial - Escolha seu provedor
+# Gemini
+gemini.api-key=${GEMINI_API_KEY}
+gemini.model=gemini-2.0-flash
+
+# OpenAI (Opcional)
+openai.api-key=${OPENAI_API_KEY}
+
+# Ollama (Local)
+ollama.base-url=http://localhost:11434
+
+# Segurança JWT
+auth.jwt.secret=${JWT_SECRET}
+auth.admin.emails=admin@exemplo.com
