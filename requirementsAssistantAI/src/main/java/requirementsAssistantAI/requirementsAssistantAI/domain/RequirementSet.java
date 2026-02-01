@@ -1,6 +1,8 @@
 package com.tcc.requirements_assistant_api.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +45,6 @@ public class RequirementSet {
         updatedAt = LocalDateTime.now();
     }
 
-    // Constructors
     public RequirementSet() {
     }
 

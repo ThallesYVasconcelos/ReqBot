@@ -17,12 +17,15 @@ public class Requirement {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
 
-    @Column(name = "requirement_id", nullable = false, unique = true)
+    @Column(name = "requirement_id")
     private String requirementId;
 
     @Column(name = "refined_requirement", columnDefinition = "TEXT")
     private String refinedRequirement;
 
+    @Column(name="requirement_hash")
+    private String requirementHash;
+    
     @Column(name = "analise", columnDefinition = "TEXT")
     private String analise;
 

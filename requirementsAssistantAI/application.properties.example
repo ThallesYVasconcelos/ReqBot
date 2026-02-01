@@ -6,16 +6,27 @@ spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
 spring.datasource.username=postgres
 spring.datasource.password=sua_senha_aqui
 
-# Inteligência Artificial - Escolha seu provedor
+# Inteligência Artificial - Escolha seu provedor (gemini | openai | ollama)
+ai.provider=gemini
+
 # Gemini
 gemini.api-key=${GEMINI_API_KEY}
 gemini.model=gemini-2.0-flash
 
-# OpenAI (Opcional)
+# OpenAI
 openai.api-key=${OPENAI_API_KEY}
+openai.model=gpt-4o
 
 # Ollama (Local)
 ollama.base-url=http://localhost:11434
+ollama.model=llama3
+
+# PGVector - Store de Embeddings (produção)
+pgvector.host=localhost
+pgvector.port=5433
+pgvector.database=requirements_db
+pgvector.user=postgres
+pgvector.password=${PGVECTOR_PASSWORD:sua_senha_aqui}
 
 # Segurança JWT
 auth.jwt.secret=${JWT_SECRET}

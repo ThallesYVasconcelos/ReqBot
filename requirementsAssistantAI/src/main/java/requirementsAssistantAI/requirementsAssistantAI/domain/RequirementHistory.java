@@ -21,11 +21,14 @@ public class RequirementHistory {
     @JoinColumn(name = "requirement_uuid", nullable = false)
     private Requirement requirement;
 
+    
     @Column(name = "requirement_id", nullable = false)
     private String requirementId;
 
     @Column(name = "refined_requirement", columnDefinition = "TEXT")
     private String refinedRequirement;
+    @Column(name="requirement_hash")
+    private String requirementHash;
 
     @Column(name = "analise", columnDefinition = "TEXT")
     private String analise;
@@ -37,7 +40,7 @@ public class RequirementHistory {
     private LocalDateTime createdAt;
 
     @Column(name = "action_type")
-    private String actionType; // CREATED, UPDATED, DELETED
+    private String actionType; 
 
     @PrePersist
     protected void onCreate() {
@@ -49,6 +52,7 @@ public class RequirementHistory {
 
     public RequirementHistory(Requirement requirement, String actionType) {
         this.requirement = requirement;
+        this.requirementHash = requirement.getRequirementHash();
         this.requirementId = requirement.getRequirementId();
         this.refinedRequirement = requirement.getRefinedRequirement();
         this.analise = requirement.getAnalise();
