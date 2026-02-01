@@ -50,6 +50,7 @@ public class RequirementSet {
 
     public RequirementSet(String name) {
         this.name = name;
+        this.description = (name != null) ? name : "";
     }
 
     public List<Requirement> getRequirements() {

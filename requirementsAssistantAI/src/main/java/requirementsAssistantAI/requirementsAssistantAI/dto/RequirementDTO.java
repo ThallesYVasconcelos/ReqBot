@@ -1,8 +1,13 @@
 package requirementsAssistantAI.requirementsAssistantAI.dto;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Getter
+@Setter
 public class RequirementDTO {
     private UUID uuid;
     private String requirementId;
@@ -14,11 +19,9 @@ public class RequirementDTO {
     private UUID requirementSetId;
     private String requirementSetName;
 
-    // Construtor padrão
     public RequirementDTO() {
     }
 
-    // Construtor completo
     public RequirementDTO(UUID uuid, String requirementId, String refinedRequirement, 
                          String analise, String status, LocalDateTime createdAt, 
                          LocalDateTime updatedAt, UUID requirementSetId, String requirementSetName) {
@@ -33,76 +36,4 @@ public class RequirementDTO {
         this.requirementSetName = requirementSetName;
     }
 
-    // Getters e Setters
-    public UUID getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(UUID uuid) {
-        this.uuid = uuid;
-    }
-
-    public String getRequirementId() {
-        return requirementId;
-    }
-
-    public void setRequirementId(String requirementId) {
-        this.requirementId = requirementId;
-    }
-
-    public String getRefinedRequirement() {
-        return refinedRequirement;
-    }
-
-    public void setRefinedRequirement(String refinedRequirement) {
-        this.refinedRequirement = refinedRequirement;
-    }
-
-    public String getAnalise() {
-        return analise;
-    }
-
-    public void setAnalise(String analise) {
-        this.analise = analise;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
-    public UUID getRequirementSetId() {
-        return requirementSetId;
-    }
-
-    public void setRequirementSetId(UUID requirementSetId) {
-        this.requirementSetId = requirementSetId;
-    }
-
-    public String getRequirementSetName() {
-        return requirementSetName;
-    }
-
-    public void setRequirementSetName(String requirementSetName) {
-        this.requirementSetName = requirementSetName;
-    }
 }

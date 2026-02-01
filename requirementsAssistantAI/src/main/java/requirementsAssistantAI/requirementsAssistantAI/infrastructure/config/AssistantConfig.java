@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import requirementsAssistantAI.requirementsAssistantAI.application.ports.AssistantAiService;
+import requirementsAssistantAI.requirementsAssistantAI.application.ports.ChatAiService;
 
 /**
  * Configuração polimórfica do assistente de IA.
@@ -70,19 +71,13 @@ public class AssistantConfig {
                 .build();
     }
 
-    /**
-     * Modelo de Embedding: transforma texto em vetores numéricos.
-     * O AllMiniLmL6V2 é leve e roda localmente na CPU, custo zero de tokens.
-     */
+  
     @Bean
     public EmbeddingModel embeddingModel() {
-        return new AllMiniLmL6V2EmbeddingModel(); // Dimension: 384
+        return new AllMiniLmL6V2EmbeddingModel(); 
     }
 
-    /**
-     * Store de Embeddings (Produção): usa PGVector no PostgreSQL.
-     * Só é ativado se o perfil não for 'test'.
-     */
+   
     @Bean
     @Profile("!test")
     public EmbeddingStore<TextSegment> embeddingStore() {
@@ -97,25 +92,26 @@ public class AssistantConfig {
                 .build();
     }
 
-    /**
-     * Store de Embeddings (Testes): usa memória RAM.
-     * Evita a necessidade de Docker com Postgres para testes unitários.
-     */
+ 
+ 
     @Bean
     @Profile("test")
     public EmbeddingStore<TextSegment> embeddingStoreInMemory() {
         return new InMemoryEmbeddingStore<>();
     }
 
-    /**
-     * Bean do serviço de IA. Recebe ChatModel (polimórfico) e AssistantTools.
-     * O Spring injeta a implementação ativa (Gemini, OpenAI ou Ollama).
-     */
     @Bean
-    public AssistantAiService assistant(ChatModel model, AssistantTools tools) {
+    public AssistantAiService assistantAiService(ChatModel model, AssistantTools tools) {
         return AiServices.builder(AssistantAiService.class)
                 .chatModel(model)
                 .tools(tools)
+                .build();
+    }
+
+    @Bean
+    public ChatAiService chatAiService(ChatModel model) {
+        return AiServices.builder(ChatAiService.class)
+                .chatModel(model)
                 .build();
     }
 }
