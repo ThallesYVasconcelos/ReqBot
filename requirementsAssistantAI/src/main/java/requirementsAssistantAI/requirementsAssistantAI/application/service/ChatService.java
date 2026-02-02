@@ -1,5 +1,9 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
+import com.tcc.requirements_assistant_api.model.ChatbotConfig;
+import com.tcc.requirements_assistant_api.model.Requirement;
+import com.tcc.requirements_assistant_api.repository.ChatbotConfigRepository;
+import com.tcc.requirements_assistant_api.repository.RequirementRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -7,67 +11,95 @@ import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
-import requirementsAssistantAI.requirementsAssistantAI.application.ports.ChatAiService;
-import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * Serviço do chatbot RAG com filtro por projeto.
- * Busca vetorial no EmbeddingStore restrita aos requisitos aprovados do projeto.
- */
+import requirementsAssistantAI.requirementsAssistantAI.application.ports.ChatAiService;
+import requirementsAssistantAI.requirementsAssistantAI.dto.ChatResponseDTO;
+
 @Service
 public class ChatService {
 
+    private final ChatbotConfigRepository chatbotConfigRepository;
+    private final RequirementRepository requirementRepository;
     private final ChatAiService chatAiService;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
 
-    public ChatService(ChatAiService chatAiService,
-                       EmbeddingModel embeddingModel,
-                       EmbeddingStore<TextSegment> embeddingStore) {
+    public ChatService(
+            ChatbotConfigRepository chatbotConfigRepository,
+            RequirementRepository requirementRepository,
+            ChatAiService chatAiService,
+            EmbeddingModel embeddingModel,
+            EmbeddingStore<TextSegment> embeddingStore) {
+        this.chatbotConfigRepository = chatbotConfigRepository;
+        this.requirementRepository = requirementRepository;
         this.chatAiService = chatAiService;
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
     }
 
-    /**
-     * Responde uma pergunta do usuário com base nos requisitos aprovados do projeto.
-     * O filtro por project_id garante que apenas requisitos do projeto atual sejam considerados.
-     */
-    public String answerQuestion(@NonNull String question, @NonNull UUID projectId) {
-        Objects.requireNonNull(question, "A pergunta não pode ser nula");
-        Objects.requireNonNull(projectId, "O ID do projeto não pode ser nulo");
+    public ChatResponseDTO answerQuestion(String question) {
+        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrue()
+                .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo"));
 
-        String projectIdStr = projectId.toString();
-        String context = findRelevantContext(question, projectIdStr);
+        if (!config.isAvailableNow()) {
+            return new ChatResponseDTO(
+                    "Desculpe, o chatbot está fora do horário de funcionamento. " +
+                    "Horário de atendimento: " + formatTimeRange(config.getStartTime(), config.getEndTime()),
+                    question,
+                    LocalDateTime.now(),
+                    false
+            );
+        }
 
-        return chatAiService.answerQuestion(question, context);
+        String projectId = config.getRequirementSet().getId().toString();
+        String context = findRelevantContext(question, projectId);
+        String answer = chatAiService.answerQuestion(question, context);
+
+        return new ChatResponseDTO(answer, question, LocalDateTime.now(), true);
     }
 
-    private String findRelevantContext(String query, String projectId) {
-        Embedding queryEmbedding = embeddingModel.embed(query).content();
-
-        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
-                .maxResults(5)
-                .minScore(0.6)
-                .build();
-
-        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
-        List<String> texts = result.matches().stream()
-                .map(m -> m.embedded().text())
+    private String findRelevantContext(String userQuestion, String projectId) {
+        List<Requirement> approvedRequirements = requirementRepository.findByRequirementSet_Id(
+                UUID.fromString(projectId)
+        ).stream()
+                .filter(req -> "APPROVED".equals(req.getStatus()))
                 .collect(Collectors.toList());
 
-        if (texts.isEmpty()) {
+        if (approvedRequirements.isEmpty()) {
             return "Nenhum requisito aprovado encontrado para este projeto.";
         }
 
-        return String.join("\n---\n", texts);
+        Embedding queryEmbedding = embeddingModel.embed(userQuestion).content();
+        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(5)
+                .minScore(0.6)
+                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
+                .build();
+
+        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
+
+        if (result.matches().isEmpty()) {
+            return approvedRequirements.stream()
+                    .map(req -> req.getRequirementId() + ": " + req.getRefinedRequirement())
+                    .collect(Collectors.joining("\n---\n"));
+        }
+
+        return result.matches().stream()
+                .map(m -> m.embedded().text())
+                .collect(Collectors.joining("\n---\n"));
+    }
+
+    private String formatTimeRange(java.time.LocalTime startTime, java.time.LocalTime endTime) {
+        if (startTime == null || endTime == null) {
+            return "24 horas";
+        }
+        return startTime + " às " + endTime;
     }
 }
