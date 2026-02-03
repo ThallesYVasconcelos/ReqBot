@@ -1,4 +1,3 @@
-# Nome da Aplicação
 spring.application.name=requirements-assistant-ai
 
 # Configurações do Banco de Dados (Docker)
@@ -9,25 +8,25 @@ spring.datasource.password=sua_senha_aqui
 # Inteligência Artificial - Escolha seu provedor (gemini | openai | ollama)
 ai.provider=gemini
 
-# Gemini
 gemini.api-key=${GEMINI_API_KEY}
 gemini.model=gemini-2.0-flash
 
-# OpenAI
 openai.api-key=${OPENAI_API_KEY}
 openai.model=gpt-4o
 
-# Ollama (Local)
 ollama.base-url=http://localhost:11434
 ollama.model=llama3
 
-# PGVector - Store de Embeddings (produção)
+# PGVector 
 pgvector.host=localhost
 pgvector.port=5433
 pgvector.database=requirements_db
 pgvector.user=postgres
 pgvector.password=${PGVECTOR_PASSWORD:sua_senha_aqui}
 
-# Segurança JWT
+# Segurança JWT e login (Google)
 auth.jwt.secret=${JWT_SECRET}
+auth.jwt.issuer=requirements-assistant-api
+auth.jwt.ttl-seconds=3600
+auth.google.client-id=${GOOGLE_CLIENT_ID:}
 auth.admin.emails=admin@exemplo.com

@@ -32,6 +32,10 @@ build/
 ### VS Code ###
 .vscode/
 
+### HTTP Client (tokens locais) ###
+http-requests.local.http
+*.http.local
+
 ### Arquivos confidenciais / secrets ###
 # Configurações locais com senhas, API keys, etc.
 /application.properties
