@@ -1,8 +1,8 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service.auth;
 
-import com.tcc.requirements_assistant_api.model.AppUser;
-import com.tcc.requirements_assistant_api.model.AuthRole;
-import com.tcc.requirements_assistant_api.repository.AppUserRepository;
+import requirementsAssistantAI.requirementsAssistantAI.domain.AppUser;
+import requirementsAssistantAI.requirementsAssistantAI.domain.AuthRole;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.AppUserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;

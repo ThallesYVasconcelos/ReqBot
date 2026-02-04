@@ -1,7 +1,7 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.controller;
 
-import com.tcc.requirements_assistant_api.model.Requirement;
-import com.tcc.requirements_assistant_api.model.RequirementHistory;
+import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
+import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementHistory;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

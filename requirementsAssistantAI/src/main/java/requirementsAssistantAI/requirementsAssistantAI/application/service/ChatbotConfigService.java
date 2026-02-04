@@ -1,9 +1,9 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
-import com.tcc.requirements_assistant_api.model.ChatbotConfig;
-import com.tcc.requirements_assistant_api.model.RequirementSet;
-import com.tcc.requirements_assistant_api.repository.ChatbotConfigRepository;
-import com.tcc.requirements_assistant_api.repository.RequirementSetRepository;
+import requirementsAssistantAI.requirementsAssistantAI.domain.ChatbotConfig;
+import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementSetRepository;
 import jakarta.validation.Valid;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;

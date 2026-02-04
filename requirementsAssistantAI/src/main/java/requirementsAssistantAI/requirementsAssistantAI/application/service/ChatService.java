@@ -1,9 +1,9 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
-import com.tcc.requirements_assistant_api.model.ChatbotConfig;
-import com.tcc.requirements_assistant_api.model.Requirement;
-import com.tcc.requirements_assistant_api.repository.ChatbotConfigRepository;
-import com.tcc.requirements_assistant_api.repository.RequirementRepository;
+import requirementsAssistantAI.requirementsAssistantAI.domain.ChatbotConfig;
+import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;

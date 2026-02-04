@@ -1,4 +1,4 @@
-package com.tcc.requirements_assistant_api.model;
+package requirementsAssistantAI.requirementsAssistantAI.domain;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;

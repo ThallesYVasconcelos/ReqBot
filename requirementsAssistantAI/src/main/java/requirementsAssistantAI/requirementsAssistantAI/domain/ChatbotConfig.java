@@ -1,4 +1,4 @@
-package com.tcc.requirements_assistant_api.model;
+package requirementsAssistantAI.requirementsAssistantAI.domain;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;

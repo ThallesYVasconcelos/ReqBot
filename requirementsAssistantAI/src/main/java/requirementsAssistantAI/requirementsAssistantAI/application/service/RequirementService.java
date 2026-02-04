@@ -1,11 +1,11 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
-import com.tcc.requirements_assistant_api.model.Requirement;
-import com.tcc.requirements_assistant_api.model.RequirementHistory;
-import com.tcc.requirements_assistant_api.model.RequirementSet;
-import com.tcc.requirements_assistant_api.repository.RequirementHistoryRepository;
-import com.tcc.requirements_assistant_api.repository.RequirementRepository;
-import com.tcc.requirements_assistant_api.repository.RequirementSetRepository;
+import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
+import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementHistory;
+import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementHistoryRepository;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementRepository;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementSetRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -102,6 +102,12 @@ public class RequirementService {
         requirementHistoryRepository.save(history);
 
         return requirement;
+    }
+
+    @Transactional
+    public RequirementDTO processAndSaveRequirementAsDTO(String rawRequirement, @NonNull UUID requirementSetId) {
+        Requirement requirement = processAndSaveRequirement(rawRequirement, requirementSetId);
+        return convertToDTO(requirement);
     }
 
     public RequirementDTO getRequirementById(@NonNull UUID id) {

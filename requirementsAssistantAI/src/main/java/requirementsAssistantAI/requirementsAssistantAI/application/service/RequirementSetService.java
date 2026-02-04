@@ -1,9 +1,9 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
-import com.tcc.requirements_assistant_api.model.Requirement;
-import com.tcc.requirements_assistant_api.model.RequirementSet;
-import com.tcc.requirements_assistant_api.repository.RequirementRepository;
-import com.tcc.requirements_assistant_api.repository.RequirementSetRepository;
+import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
+import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementRepository;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementSetRepository;
 import requirementsAssistantAI.requirementsAssistantAI.dto.RequirementSetDTO;
 import requirementsAssistantAI.requirementsAssistantAI.dto.RequirementSummaryDTO;
 import org.springframework.lang.NonNull;

@@ -1,6 +1,6 @@
-package com.tcc.requirements_assistant_api.repository;
+package requirementsAssistantAI.requirementsAssistantAI.infrastructure;
 
-import com.tcc.requirements_assistant_api.model.ChatbotConfig;
+import requirementsAssistantAI.requirementsAssistantAI.domain.ChatbotConfig;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
