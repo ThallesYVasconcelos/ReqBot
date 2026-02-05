@@ -1,12 +1,12 @@
 # Requirements Assistant AI
 
-API para gerenciamento e refinamento de requisitos de software com IA (Gemini, OpenAI ou Ollama), chatbot RAG e login via Google.
+API para gerenciamento e refinamento de requisitos de software com IA (Gemini), chatbot RAG educacional e login via Google.
 
 ## Pré-requisitos
 
 - Java 17+
 - Docker (PostgreSQL + PGVector)
-- API key do provedor de IA escolhido (Gemini ou OpenAI), ou Ollama rodando localmente
+- API key do Google Gemini AI
 
 ## Execução rápida
 
@@ -24,35 +24,71 @@ cp application.properties.example application.properties
 
 A API estará em `http://localhost:8080`.
 
-## Variáveis de ambiente (.env ou application.properties)
+## Documentação Swagger
 
-| Variável | Obrigatória | Descrição |
-|----------|-------------|-----------|
-| `JWT_SECRET` | Sim | Segredo para JWT (mín. 32 caracteres) |
-| `GEMINI_API_KEY` | Se ai.provider=gemini | API key do Google AI |
-| `OPENAI_API_KEY` | Se ai.provider=openai | API key da OpenAI |
-| `GOOGLE_CLIENT_ID` | Opcional | Client ID do Google OAuth (valida aud do idToken) |
-| `PGVECTOR_PASSWORD` | Opcional | Senha do PGVector (default: mesma do datasource) |
+Após iniciar a aplicação, acesse:
+- **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+- **OpenAPI JSON**: `http://localhost:8080/v3/api-docs`
 
-Copie `.env.example` para `.env` e preencha.
+## Configuração (application.properties)
+
+| Propriedade | Obrigatória | Descrição |
+|-------------|-------------|-----------|
+| `gemini.api-key` | Sim | API key do Google Gemini AI |
+| `gemini.model` | Não | Modelo Gemini (padrão: gemini-2.5-flash) |
+| `spring.datasource.url` | Sim | URL do PostgreSQL |
+| `spring.datasource.username` | Sim | Usuário do banco |
+| `spring.datasource.password` | Sim | Senha do banco |
+| `auth.jwt.secret` | Sim | Segredo para JWT (mín. 32 caracteres) |
+| `auth.admin.emails` | Não | Emails de admin (separados por vírgula) |
+| `auth.google.client-id` | Opcional | Client ID do Google OAuth |
+
+## Autenticação
+
+### Login via Google OAuth
+- `POST /api/auth/user/google` – Login como usuário
+- `POST /api/auth/admin/google` – Login como admin
+
+### Tokens de Teste (Desenvolvimento)
+Para facilitar testes locais, use:
+- **Token**: `test-admin` → Autentica como admin
+- **Token**: `id-user` → Autentica como usuário normal
+
+Envie o token no campo `idToken` do body da requisição.
 
 ## Papéis (Admin e User)
 
-- **Admin** – Gerencia requirements, requirement-sets, assistente e chatbot. Login: `POST /api/auth/admin/google`.
-- **User** – Acessa chatbot dentro do horário configurado. Login: `POST /api/auth/user/google`.
+- **Admin** – Gerencia requirements, requirement-sets, assistente e chatbot. Pode aprovar requisitos e configurar o chatbot.
+- **User** – Acessa chatbot dentro do horário configurado. O chatbot é educacional e não fornece código ou implementações prontas.
 
 Emails de admin são definidos em `auth.admin.emails` (separados por vírgula).
 
 ## Endpoints principais
 
+### Autenticação
 - `POST /api/auth/user/google` – Login user
 - `POST /api/auth/admin/google` – Login admin
-- `POST /api/requirement-sets` – Criar projeto (admin)
-- `POST /api/requirements` – Processar requisito com IA (admin)
-- `POST /api/requirements/{id}/approve` – Aprovar e salvar no RAG (admin)
+
+### Requisitos (Admin)
+- `POST /api/requirement-sets` – Criar projeto
+- `POST /api/requirements` – Processar requisito com IA
+- `GET /api/requirements` – Listar requisitos
+- `PUT /api/requirements/{id}` – Atualizar requisito pendente
+- `POST /api/requirements/{id}/approve` – Aprovar e salvar no RAG
+- `DELETE /api/requirements/{id}` – Deletar requisito
+
+### Chatbot (User/Admin)
 - `POST /api/admin/chatbot/config` – Configurar chatbot (admin)
 - `POST /api/chatbot/ask` – Perguntar ao chatbot (user/admin)
 
-## Testes
+**Nota**: O chatbot é educacional e orienta os alunos sobre requisitos, mas **não fornece código, schemas SQL ou implementações prontas**. O objetivo é que os alunos aprendam criando suas próprias soluções.
 
-Use o arquivo `http-requests.http` (VS Code REST Client ou JetBrains HTTP Client) para testar os endpoints.
+## Funcionalidades
+
+- **Refinamento de Requisitos com IA**: Processa requisitos brutos usando Gemini AI, seguindo padrão INVEST
+- **Detecção de Conflitos**: Identifica requisitos duplicados ou similares
+- **Chatbot RAG Educacional**: Responde perguntas sobre requisitos aprovados sem fornecer código
+- **Gerenciamento de Projetos**: Organiza requisitos em requirement-sets
+- **Histórico de Requisitos**: Mantém histórico de todas as alterações
+
+

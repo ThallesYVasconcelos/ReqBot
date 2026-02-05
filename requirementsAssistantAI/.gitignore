@@ -18,6 +18,7 @@ target/
 *.iws
 *.iml
 *.ipr
+out/
 
 ### NetBeans ###
 /nbproject/private/
@@ -32,9 +33,11 @@ build/
 ### VS Code ###
 .vscode/
 
-### HTTP Client (tokens locais) ###
-http-requests.local.http
-*.http.local
+### Eclipse ###
+.classpath
+.project
+.settings/
+bin/
 
 ### Arquivos confidenciais / secrets ###
 # Configurações locais com senhas, API keys, etc.
@@ -42,6 +45,8 @@ http-requests.local.http
 src/main/resources/application.properties
 **/application-local.properties
 **/application-*-local.properties
+**/application-*.properties
+!**/application.properties.example
 
 # Variáveis de ambiente
 .env
@@ -54,3 +59,53 @@ src/main/resources/application.properties
 *.keystore
 *.jks
 *.p12
+*.crt
+*.csr
+
+### Logs ###
+*.log
+*.log.*
+logs/
+log/
+
+### Arquivos temporários ###
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+### Sistema Operacional ###
+# Windows
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+
+### HTTP Client (tokens locais) ###
+http-requests.local.http
+*.http.local
+*.http.private
+
+### Maven ###
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.properties
+
+### Arquivos de teste e cobertura ###
+.nyc_output/
+coverage/
+*.lcov

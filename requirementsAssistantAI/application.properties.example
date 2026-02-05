@@ -1,32 +1,44 @@
-spring.application.name=requirements-assistant-ai
+spring.application.name=requirements-assistant
 
-# Configurações do Banco de Dados (Docker)
+# Inteligência Artificial - Gemini
+ai.provider=gemini
+gemini.api-key=SUA_GEMINI_API_KEY_AQUI
+gemini.model=gemini-2.5-flash
+
+# Configurações do Banco de Dados (PostgreSQL)
 spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
 spring.datasource.username=postgres
 spring.datasource.password=sua_senha_aqui
+spring.datasource.driver-class-name=org.postgresql.Driver
 
-# Inteligência Artificial - Escolha seu provedor (gemini | openai | ollama)
-ai.provider=gemini
+# JPA/Hibernate
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.show-sql=false
 
-gemini.api-key=${GEMINI_API_KEY}
-gemini.model=gemini-2.0-flash
-
-openai.api-key=${OPENAI_API_KEY}
-openai.model=gpt-4o
-
-ollama.base-url=http://localhost:11434
-ollama.model=llama3
-
-# PGVector 
+# PGVector (Embeddings)
 pgvector.host=localhost
 pgvector.port=5433
 pgvector.database=requirements_db
 pgvector.user=postgres
-pgvector.password=${PGVECTOR_PASSWORD:sua_senha_aqui}
+pgvector.password=sua_senha_aqui
 
-# Segurança JWT e login (Google)
-auth.jwt.secret=${JWT_SECRET}
+# Segurança JWT e Autenticação
+auth.jwt.secret=ALTERE_ESTE_SECRET_PARA_UM_VALOR_ALEATORIO_MINIMO_32_CARACTERES
 auth.jwt.issuer=requirements-assistant-api
 auth.jwt.ttl-seconds=3600
-auth.google.client-id=${GOOGLE_CLIENT_ID:}
+
+# Google OAuth (Opcional - para validação de idToken)
+auth.google.client-id=
+
+# Emails de administradores (separados por vírgula)
 auth.admin.emails=admin@exemplo.com
+
+# Swagger/OpenAPI
+springdoc.api-docs.path=/v3/api-docs
+springdoc.swagger-ui.path=/swagger-ui.html
+springdoc.swagger-ui.operationsSorter=method
+springdoc.swagger-ui.tagsSorter=alpha
+springdoc.swagger-ui.use-root-path=true
+springdoc.default-consumes-media-type=application/json
+springdoc.default-produces-media-type=application/json
