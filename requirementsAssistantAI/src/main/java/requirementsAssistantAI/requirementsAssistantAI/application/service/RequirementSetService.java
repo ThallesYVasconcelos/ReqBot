@@ -2,6 +2,7 @@ package requirementsAssistantAI.requirementsAssistantAI.application.service;
 
 import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
 import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementHistoryRepository;
 import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementRepository;
 import requirementsAssistantAI.requirementsAssistantAI.infrastructure.RequirementSetRepository;
 import requirementsAssistantAI.requirementsAssistantAI.dto.RequirementSetDTO;
@@ -20,12 +21,15 @@ public class RequirementSetService {
 
     private final RequirementSetRepository requirementSetRepository;
     private final RequirementRepository requirementRepository;
+    private final RequirementHistoryRepository requirementHistoryRepository;
 
     public RequirementSetService(
             RequirementSetRepository requirementSetRepository,
-            RequirementRepository requirementRepository) {
+            RequirementRepository requirementRepository,
+            RequirementHistoryRepository requirementHistoryRepository) {
         this.requirementSetRepository = requirementSetRepository;
         this.requirementRepository = requirementRepository;
+        this.requirementHistoryRepository = requirementHistoryRepository;
     }
 
     @Transactional
@@ -55,6 +59,15 @@ public class RequirementSetService {
     public void deleteRequirementSet(@NonNull UUID id) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(id))
                 .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado com ID: " + id));
+        
+        // Deleta os RequirementHistory antes de deletar os Requirements
+        List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(id);
+        for (Requirement requirement : requirements) {
+            requirementHistoryRepository.deleteAll(
+                requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(requirement.getUuid())
+            );
+        }
+        
         requirementSetRepository.delete(requirementSet);
     }
 

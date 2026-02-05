@@ -45,7 +45,7 @@ public class ChatService {
 
     public ChatResponseDTO answerQuestion(String question) {
         ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrue()
-                .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo"));
+                .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo. Configure o chatbot através do endpoint /api/admin/chatbot/config"));
 
         if (!config.isAvailableNow()) {
             return new ChatResponseDTO(

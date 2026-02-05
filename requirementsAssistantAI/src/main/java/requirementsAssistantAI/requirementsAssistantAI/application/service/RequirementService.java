@@ -19,9 +19,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -35,6 +32,7 @@ import static dev.langchain4j.data.document.Metadata.metadata;
 public class RequirementService {
 
     private static final String STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
+    private static final String STATUS_CONFLICT = "CONFLICT";
 
     private final AssistantAiService assistantAiService;
     private final RequirementRepository requirementRepository;
@@ -63,43 +61,72 @@ public class RequirementService {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
                 .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
 
-        String rawHash = computeSha256(rawRequirement);
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString());
+        
+        String aiResponse = null;
+        int retryCount = 0;
+        final int MAX_RETRIES = 2;
+        final int MIN_RESPONSE_LENGTH = 200;
 
-        if (requirementRepository.existsByRequirementHashAndStatus(rawHash, STATUS_PENDING_APPROVAL)) {
-            throw new IllegalStateException(
-                    "Já existe um requisito idêntico (mesmo hash) com status PENDING_APPROVAL. Processamento abortado.");
+        while (retryCount <= MAX_RETRIES) {
+            try {
+                aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
+                
+                if (aiResponse != null && aiResponse.length() >= MIN_RESPONSE_LENGTH) {
+                    break;
+                } else if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    Thread.sleep(1000);
+                    continue;
+                } else {
+                    break;
+                }
+            } catch (Exception e) {
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    continue;
+                }
+                throw new RuntimeException("Erro ao chamar IA após " + MAX_RETRIES + " tentativas: " + e.getMessage(), e);
+            }
         }
-
-        String projectId = requirementSetId.toString();
-        String relevantContext = findRelevantContext(rawRequirement, projectId);
-
-        String aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
 
         String requirementId = extractRequirementId(aiResponse);
         String analise = extractAnalise(aiResponse);
         String refinedRequirementText = extractRefinedRequirement(aiResponse);
+        boolean hasConflict = hasConflictDetected(aiResponse);
 
-        if ("REQ-UNKNOWN".equals(requirementId)) {
+        if (requirementId.equals("REQ-UNKNOWN")) {
             requirementId = "REQ-TEMP-" + System.currentTimeMillis();
         }
 
-        if (refinedRequirementText.isEmpty()) {
-            analise = aiResponse;
-            refinedRequirementText = "FALHA NO PARSE: " + rawRequirement;
+        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
+        
+        if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
+            if (isAiResponseValid) {
+                refinedRequirementText = aiResponse;
+            } else {
+                refinedRequirementText = "Como usuário do sistema, eu quero " + rawRequirement.toLowerCase() + " para melhorar a gestão do sistema.";
+            }
+        }
+        
+        if (analise == null || analise.trim().isEmpty() || analise.length() < 20 || "Verifique o texto completo.".equals(analise)) {
+            if (isAiResponseValid) {
+                analise = aiResponse;
+            } else {
+                analise = "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
+            }
         }
 
         Requirement requirement = new Requirement();
         requirement.setRequirementId(requirementId);
         requirement.setRefinedRequirement(refinedRequirementText);
         requirement.setAnalise(analise);
-        requirement.setRequirementHash(rawHash);
-        requirement.setStatus(STATUS_PENDING_APPROVAL);
+        requirement.setStatus(hasConflict ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
         requirement.setRequirementSet(requirementSet);
 
         requirement = requirementRepository.save(requirement);
-
-        RequirementHistory history = new RequirementHistory(requirement, "CREATED");
-        requirementHistoryRepository.save(history);
+        requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
 
         return requirement;
     }
@@ -130,6 +157,10 @@ public class RequirementService {
         Requirement req = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
                 .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
 
+        if (STATUS_CONFLICT.equals(req.getStatus())) {
+            throw new IllegalStateException("Não é possível aprovar um requisito com status CONFLICT. Resolva o conflito primeiro.");
+        }
+
         req.setStatus("APPROVED");
         requirementRepository.save(req);
 
@@ -140,6 +171,96 @@ public class RequirementService {
 
         Embedding embedding = embeddingModel.embed(segment).content();
         embeddingStore.add(embedding, segment);
+    }
+
+    @Transactional
+    public RequirementDTO updatePendingRequirement(@NonNull UUID requirementUuid, String rawRequirement) {
+        Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
+                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
+
+        if (!STATUS_PENDING_APPROVAL.equals(requirement.getStatus()) && !STATUS_CONFLICT.equals(requirement.getStatus())) {
+            throw new IllegalStateException("Apenas requisitos com status PENDING_APPROVAL ou CONFLICT podem ser atualizados");
+        }
+
+        UUID requirementSetId = requirement.getRequirementSet().getId();
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString());
+        
+        String aiResponse = null;
+        int retryCount = 0;
+        final int MAX_RETRIES = 2;
+        final int MIN_RESPONSE_LENGTH = 200;
+
+        while (retryCount <= MAX_RETRIES) {
+            try {
+                aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
+                
+                if (aiResponse != null && aiResponse.length() >= MIN_RESPONSE_LENGTH) {
+                    break;
+                } else if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    Thread.sleep(1000);
+                    continue;
+                } else {
+                    break;
+                }
+            } catch (Exception e) {
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    continue;
+                }
+                throw new RuntimeException("Erro ao chamar IA após " + MAX_RETRIES + " tentativas: " + e.getMessage(), e);
+            }
+        }
+
+        String requirementId = extractRequirementId(aiResponse);
+        String analise = extractAnalise(aiResponse);
+        String refinedRequirementText = extractRefinedRequirement(aiResponse);
+        boolean hasConflict = hasConflictDetected(aiResponse);
+
+        if (requirementId.equals("REQ-UNKNOWN")) {
+            requirementId = "REQ-TEMP-" + System.currentTimeMillis();
+        }
+
+        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
+        
+        if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
+            if (isAiResponseValid) {
+                refinedRequirementText = aiResponse;
+            } else {
+                refinedRequirementText = "Como usuário do sistema, eu quero " + rawRequirement.toLowerCase() + " para melhorar a gestão do sistema.";
+            }
+        }
+        
+        if (analise == null || analise.trim().isEmpty() || analise.length() < 20 || "Verifique o texto completo.".equals(analise)) {
+            if (isAiResponseValid) {
+                analise = aiResponse;
+            } else {
+                analise = "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
+            }
+        }
+
+        requirement.setRequirementId(requirementId);
+        requirement.setRefinedRequirement(refinedRequirementText);
+        requirement.setAnalise(analise);
+        requirement.setStatus(hasConflict ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
+
+        requirement = requirementRepository.save(requirement);
+        requirementHistoryRepository.save(new RequirementHistory(requirement, "UPDATED"));
+
+        return convertToDTO(requirement);
+    }
+
+    @Transactional
+    public void deleteRequirement(@NonNull UUID requirementUuid) {
+        Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
+                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
+
+        requirementHistoryRepository.deleteAll(
+            requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(requirementUuid)
+        );
+
+        requirementRepository.delete(requirement);
     }
 
     private RequirementDTO convertToDTO(Requirement requirement) {
@@ -173,46 +294,141 @@ public class RequirementService {
             return "Nenhum requisito anterior relevante encontrado.";
         }
 
-        return result.matches().stream()
-                .map(m -> m.embedded().text())
-                .collect(Collectors.joining("\n---\n"));
-    }
-
-    private String computeSha256(String text) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
+        final int MAX_CONTEXT_LENGTH = 2000;
+        StringBuilder contextBuilder = new StringBuilder();
+        
+        for (var match : result.matches()) {
+            String text = match.embedded().text();
+            if (contextBuilder.length() + text.length() + 5 > MAX_CONTEXT_LENGTH) {
+                int remaining = MAX_CONTEXT_LENGTH - contextBuilder.length() - 5;
+                if (remaining > 50) {
+                    contextBuilder.append(text, 0, remaining).append("\n...");
+                }
+                break;
             }
-            return hexString.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 não disponível", e);
+            if (contextBuilder.length() > 0) {
+                contextBuilder.append("\n---\n");
+            }
+            contextBuilder.append(text);
         }
+
+        return contextBuilder.toString();
     }
 
     private String extractRequirementId(String aiResponse) {
-        Pattern pattern = Pattern.compile("(REQ-\\d{4}-\\d+)", Pattern.CASE_INSENSITIVE);
-        Matcher matcher = pattern.matcher(aiResponse);
-        return matcher.find() ? matcher.group(1) : "REQ-UNKNOWN";
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return "REQ-UNKNOWN";
+        }
+        Pattern pattern1 = Pattern.compile("(REQ-\\d{4}-\\d+)", Pattern.CASE_INSENSITIVE);
+        Matcher matcher1 = pattern1.matcher(aiResponse);
+        if (matcher1.find()) {
+            return matcher1.group(1);
+        }
+        Pattern pattern2 = Pattern.compile("(REQ-\\d+)", Pattern.CASE_INSENSITIVE);
+        Matcher matcher2 = pattern2.matcher(aiResponse);
+        if (matcher2.find()) {
+            return matcher2.group(1);
+        }
+        Pattern pattern3 = Pattern.compile("(REQ-\\d+)\\s*-", Pattern.CASE_INSENSITIVE);
+        Matcher matcher3 = pattern3.matcher(aiResponse);
+        if (matcher3.find()) {
+            return matcher3.group(1);
+        }
+        return "REQ-UNKNOWN";
     }
 
     private String extractAnalise(String aiResponse) {
-        Pattern pattern = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Análise(?:.*?):\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*Requisito Refinado|$)",
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return null;
+        }
+        if (aiResponse.length() < 50) {
+            return null;
+        }
+        Pattern pattern1 = Pattern.compile(
+                "(?i)(?:\\*\\*|##)?\\s*Análise\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Requisito Refinado|Status|Estimativa)|$)",
                 Pattern.DOTALL);
-        Matcher matcher = pattern.matcher(aiResponse);
-        return matcher.find() ? matcher.group(1).trim() : "Verifique o texto completo.";
+        Matcher matcher1 = pattern1.matcher(aiResponse);
+        if (matcher1.find()) {
+            String result = matcher1.group(1).trim();
+            if (!result.isEmpty() && result.length() >= 30 && !result.matches("^\\d+$")) {
+                return result;
+            }
+        }
+        int index = aiResponse.toLowerCase().indexOf("análise");
+        if (index >= 0) {
+            String after = aiResponse.substring(index + 7).trim();
+            int next = Math.min(
+                after.toLowerCase().indexOf("requisito refinado"),
+                after.toLowerCase().indexOf("estimativa")
+            );
+            if (next > 0) {
+                String result = after.substring(0, next).trim();
+                if (result.length() >= 30 && !result.matches("^\\d+$")) {
+                    return result;
+                }
+            }
+        }
+        return null;
     }
 
     private String extractRefinedRequirement(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return null;
+        }
+        if (aiResponse.length() < 50) {
+            return null;
+        }
+        Pattern pattern1 = Pattern.compile(
+                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Critérios|Estimativa|Status)|$)",
+                Pattern.DOTALL);
+        Matcher matcher1 = pattern1.matcher(aiResponse);
+        if (matcher1.find()) {
+            String result = matcher1.group(1).trim();
+            if (!result.isEmpty() && result.length() >= 30 && !result.matches("^\\d+$")) {
+                return result;
+            }
+        }
+        int index = aiResponse.toLowerCase().indexOf("requisito refinado");
+        if (index >= 0) {
+            String after = aiResponse.substring(index + "requisito refinado".length())
+                .replaceFirst("^\\s*:?\\s*", "");
+            int next = Math.min(
+                Math.min(
+                    after.toLowerCase().indexOf("critérios"),
+                    after.toLowerCase().indexOf("estimativa")
+                ),
+                after.toLowerCase().indexOf("status")
+            );
+            if (next > 0) {
+                String result = after.substring(0, next).trim();
+                if (result.length() >= 30 && !result.matches("^\\d+$")) {
+                    return result;
+                }
+            } else {
+                String result = after.trim();
+                if (result.length() >= 30 && !result.matches("^\\d+$")) {
+                    return result;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean hasConflictDetected(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return false;
+        }
+        
         Pattern pattern = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado(?:.*?):\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Critérios|Estimativa)|$)",
+                "(?i)(?:\\*\\*|##)?\\s*Status de Validação\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Análise|Requisito Refinado|$))",
                 Pattern.DOTALL);
         Matcher matcher = pattern.matcher(aiResponse);
-        return matcher.find() ? matcher.group(1).trim() : "";
+        if (matcher.find()) {
+            String status = matcher.group(1).trim();
+            return status.toUpperCase().contains("CONFLITO") || status.toUpperCase().contains("CONFLICT");
+        }
+        
+        return aiResponse.toUpperCase().contains("CONFLITO DETECTADO") || 
+               aiResponse.toUpperCase().contains("CONFLICT DETECTED");
     }
 }

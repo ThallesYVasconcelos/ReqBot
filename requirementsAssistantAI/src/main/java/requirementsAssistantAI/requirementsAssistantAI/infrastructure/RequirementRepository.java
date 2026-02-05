@@ -13,5 +13,6 @@ public interface RequirementRepository extends JpaRepository<Requirement, UUID> 
     Optional<Requirement> findByRequirementId(String requirementId);
     List<Requirement> findByRequirementSet_Id(UUID requirementSetId);
     boolean existsByRequirementHashAndStatus(String requirementHash, String status);
+    List<Requirement> findByRequirementSet_IdAndStatus(UUID requirementSetId, String status);
 }
 

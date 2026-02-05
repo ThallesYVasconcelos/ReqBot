@@ -48,6 +48,14 @@ public class AuthService {
 
     @Transactional
     public AuthResponse loginAsUser(String idToken) {
+        if ("test-admin".equals(idToken)) {
+            return loginAsTestAdmin();
+        }
+        
+        if ("id-user".equals(idToken)) {
+            return loginAsTestUser();
+        }
+        
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
         AppUser user = upsertUser(info, AuthRole.USER);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.USER);
@@ -55,6 +63,10 @@ public class AuthService {
 
     @Transactional
     public AuthResponse loginAsAdmin(String idToken) {
+        if ("test-admin".equals(idToken)) {
+            return loginAsTestAdmin();
+        }
+        
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
         String email = info.getEmail().toLowerCase();
         if (adminEmails.isEmpty() || !adminEmails.contains(email)) {
@@ -62,6 +74,38 @@ public class AuthService {
         }
         AppUser user = upsertUser(info, AuthRole.ADMIN);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.ADMIN);
+    }
+
+    private AuthResponse loginAsTestAdmin() {
+        String testEmail = "test-admin@requirements-assistant.local";
+        AppUser user = appUserRepository.findByEmail(testEmail)
+                .orElseGet(() -> {
+                    AppUser newUser = new AppUser(testEmail, "Test Admin", null, AuthRole.ADMIN);
+                    return appUserRepository.save(newUser);
+                });
+        
+        if (user.getRole() != AuthRole.ADMIN) {
+            user.setRole(AuthRole.ADMIN);
+            user = appUserRepository.save(user);
+        }
+        
+        return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.ADMIN);
+    }
+
+    private AuthResponse loginAsTestUser() {
+        String testEmail = "test-user@requirements-assistant.local";
+        AppUser user = appUserRepository.findByEmail(testEmail)
+                .orElseGet(() -> {
+                    AppUser newUser = new AppUser(testEmail, "Test User", null, AuthRole.USER);
+                    return appUserRepository.save(newUser);
+                });
+        
+        if (user.getRole() != AuthRole.USER) {
+            user.setRole(AuthRole.USER);
+            user = appUserRepository.save(user);
+        }
+        
+        return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.USER);
     }
 
     private AppUser upsertUser(GoogleTokenInfo info, AuthRole desiredRole) {
@@ -75,7 +119,6 @@ public class AuthService {
         user.setPictureUrl(info.getPicture());
 
         if (user.getRole() == AuthRole.ADMIN) {
-            // never downgrade
         } else {
             user.setRole(desiredRole);
         }

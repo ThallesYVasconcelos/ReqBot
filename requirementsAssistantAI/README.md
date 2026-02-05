@@ -48,7 +48,7 @@ Emails de admin são definidos em `auth.admin.emails` (separados por vírgula).
 - `POST /api/auth/user/google` – Login user
 - `POST /api/auth/admin/google` – Login admin
 - `POST /api/requirement-sets` – Criar projeto (admin)
-- `POST /api/requirements-assistant` – Processar requisito com IA (admin)
+- `POST /api/requirements` – Processar requisito com IA (admin)
 - `POST /api/requirements/{id}/approve` – Aprovar e salvar no RAG (admin)
 - `POST /api/admin/chatbot/config` – Configurar chatbot (admin)
 - `POST /api/chatbot/ask` – Perguntar ao chatbot (user/admin)

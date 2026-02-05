@@ -1,6 +1,5 @@
 package requirementsAssistantAI.requirementsAssistantAI.application.controller;
 
-import requirementsAssistantAI.requirementsAssistantAI.domain.Requirement;
 import requirementsAssistantAI.requirementsAssistantAI.domain.RequirementHistory;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -28,11 +27,10 @@ public class RequirementController {
 
     @PostMapping
     public ResponseEntity<RequirementDTO> processAndSaveRequirement(@Valid @RequestBody CreateRequirementRequest request) {
-        Requirement requirement = requirementService.processAndSaveRequirement(
+        RequirementDTO dto = requirementService.processAndSaveRequirementAsDTO(
                 request.getRequirement(),
                 Objects.requireNonNull(request.getRequirementSetId())
         );
-        RequirementDTO dto = requirementService.getRequirementById(requirement.getUuid());
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
@@ -58,5 +56,22 @@ public class RequirementController {
     public ResponseEntity<Void> approve(@PathVariable @NonNull UUID id) {
         requirementService.approveRequirement(Objects.requireNonNull(id));
         return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<RequirementDTO> updatePendingRequirement(
+            @PathVariable @NonNull UUID id,
+            @Valid @RequestBody CreateRequirementRequest request) {
+        RequirementDTO dto = requirementService.updatePendingRequirement(
+                Objects.requireNonNull(id),
+                request.getRequirement()
+        );
+        return ResponseEntity.ok(dto);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteRequirement(@PathVariable @NonNull UUID id) {
+        requirementService.deleteRequirement(Objects.requireNonNull(id));
+        return ResponseEntity.noContent().build();
     }
 }

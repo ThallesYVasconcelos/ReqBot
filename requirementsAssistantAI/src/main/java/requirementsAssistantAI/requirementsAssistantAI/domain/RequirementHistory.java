@@ -22,7 +22,7 @@ public class RequirementHistory {
     private Requirement requirement;
 
     
-    @Column(name = "requirement_id", nullable = false)
+    @Column(name = "requirement_id", nullable = true)
     private String requirementId;
 
     @Column(name = "refined_requirement", columnDefinition = "TEXT")
