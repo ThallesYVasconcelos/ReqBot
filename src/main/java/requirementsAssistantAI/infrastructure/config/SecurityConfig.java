@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 
 import javax.crypto.SecretKey;
@@ -71,7 +72,16 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**", "/api/test/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/chatbot/**").authenticated()
-                        .requestMatchers("/api/requirements/**", "/api/requirement-sets/**").hasRole("ADMIN")
+                        .requestMatchers("/api/user/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/requirements").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/requirements/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").hasRole("ADMIN")
+                        .requestMatchers("/api/requirements/*/approve").hasRole("ADMIN")
+                        .requestMatchers("/api/requirements/*/history").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/requirements/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/requirement-sets").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/requirement-sets/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/requirement-sets/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions

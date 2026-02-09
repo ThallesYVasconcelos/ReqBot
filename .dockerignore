@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings
+
+# Build artifacts
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Documentation
+*.md
+README*
+
+# Scripts
+scripts/
+
+# Config files (use environment variables or volumes)
+application.properties
+application-dev.properties
+application-prod.properties
+
+# Test files
+src/test/
+
+# CSV and dataset files
+*.csv

@@ -57,6 +57,12 @@ public class AuthService {
         }
         
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
+        String email = info.getEmail().toLowerCase();
+        
+        if (!isEmailAllowedAsUser(email)) {
+            throw new ForbiddenException("Acesso negado: este email não está autorizado. Apenas emails @ccc.ufcg.edu.br são permitidos.");
+        }
+        
         AppUser user = upsertUser(info, AuthRole.USER);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.USER);
     }
@@ -69,9 +75,11 @@ public class AuthService {
         
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
         String email = info.getEmail().toLowerCase();
-        if (adminEmails.isEmpty() || !adminEmails.contains(email)) {
+        
+        if (!isEmailAllowedAsAdmin(email)) {
             throw new ForbiddenException("Acesso negado: este email não está autorizado como ADMIN");
         }
+        
         AppUser user = upsertUser(info, AuthRole.ADMIN);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.ADMIN);
     }
@@ -141,6 +149,42 @@ public class AuthService {
 
         String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
         return new AuthResponse(token, "Bearer", ttlSeconds, tokenRole.name());
+    }
+
+    private boolean isEmailAllowedAsAdmin(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        
+        if (adminEmails.contains(email)) {
+            return true;
+        }
+        
+        if (email.endsWith("@computacao.ufcg.edu.br")) {
+            return true;
+        }
+        
+        if (email.endsWith("@dsc.ufcg.edu.br")) {
+            return true;
+        }
+        
+        if ("thallesvasconcelos5@gmail.com".equals(email)) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    private boolean isEmailAllowedAsUser(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        
+        if (email.endsWith("@ccc.ufcg.edu.br")) {
+            return true;
+        }
+        
+        return false;
     }
 
     private static Set<String> parseEmails(String csv) {

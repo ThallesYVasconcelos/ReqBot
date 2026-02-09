@@ -3,6 +3,7 @@ package requirementsAssistantAI.domain;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Entity
@@ -81,7 +82,7 @@ public class ChatbotConfig {
         if (!Boolean.TRUE.equals(isActive)) {
             return false;
         }
-        LocalTime now = LocalTime.now();
+        LocalTime now = LocalTime.now(ZoneId.of("America/Sao_Paulo"));
         if (startTime == null || endTime == null) {
             return true;
         }

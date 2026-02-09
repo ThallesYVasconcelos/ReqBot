@@ -5,7 +5,6 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
-import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
@@ -24,10 +23,6 @@ public class AssistantConfig {
     @Value("${gemini.api-key:}") private String geminiApiKey;
     @Value("${gemini.model:gemini-1.5-flash}") private String geminiModel;
 
-
-    @Value("${ollama.base-url:http://localhost:11434}") private String ollamaUrl;
-    @Value("${ollama.model:llama3}") private String ollamaModel;
-
     @Value("${pgvector.host:localhost}") private String pgHost;
     @Value("${pgvector.port:5432}") private int pgPort;
     @Value("${pgvector.database:postgres}") private String pgDatabase;
@@ -44,18 +39,6 @@ public class AssistantConfig {
                 .build();
     }
 
-
-    @Bean
-    @ConditionalOnProperty(name = "ai.provider", havingValue = "ollama")
-    public ChatModel ollamaModel() {
-        return OllamaChatModel.builder()
-                .baseUrl(ollamaUrl)
-                .modelName(ollamaModel)
-                .temperature(0.3)
-                .build();
-    }
-
-  
     @Bean
     public EmbeddingModel embeddingModel() {
         return new AllMiniLmL6V2EmbeddingModel(); 

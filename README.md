@@ -10,9 +10,21 @@ API para gerenciamento e refinamento de requisitos de software com IA (Gemini), 
 
 ## Execução rápida
 
+### Opção 1: Docker Compose (Recomendado)
+
 ```bash
-# 1. Subir o banco de dados
+# 1. Subir banco de dados e aplicação
 docker-compose up -d
+
+# 2. Configurar variáveis de ambiente no docker-compose.yml
+# Edite as variáveis GEMINI_API_KEY, AUTH_JWT_SECRET, etc.
+```
+
+### Opção 2: Desenvolvimento Local
+
+```bash
+# 1. Subir apenas o banco de dados
+docker-compose up -d postgres
 
 # 2. Configurar variáveis (copiar example e preencher)
 cp application.properties.example application.properties
@@ -23,6 +35,8 @@ cp application.properties.example application.properties
 ```
 
 A API estará em `http://localhost:8080`.
+
+**Nota**: Para mais detalhes sobre Docker, consulte [README_DOCKER.md](README_DOCKER.md).
 
 ## Documentação Swagger
 
@@ -87,7 +101,8 @@ Emails de admin são definidos em `auth.admin.emails` (separados por vírgula).
 
 - **Refinamento de Requisitos com IA**: Processa requisitos brutos usando Gemini AI, seguindo padrão INVEST
 - **Detecção de Conflitos**: Identifica requisitos duplicados ou similares
-- **Chatbot RAG Educacional**: Responde perguntas sobre requisitos aprovados sem fornecer código
+- **Chatbot RAG Educacional**: Responde perguntas sobre requisitos aprovados usando RAG (sem fornecer código)
+- **Análise e Classificação de Requisitos**: Classifica requisitos em FR, Security NFR ou Reliability NFR usando few-shot learning
 - **Gerenciamento de Projetos**: Organiza requisitos em requirement-sets
 - **Histórico de Requisitos**: Mantém histórico de todas as alterações
 

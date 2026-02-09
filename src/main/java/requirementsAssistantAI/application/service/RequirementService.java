@@ -61,7 +61,7 @@ public class RequirementService {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
                 .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
 
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString());
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString(), requirementSet.getName());
         
         String aiResponse = null;
         int retryCount = 0;
@@ -87,21 +87,23 @@ public class RequirementService {
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
                 }
-                throw new RuntimeException("Erro ao chamar IA após " + MAX_RETRIES + " tentativas: " + e.getMessage(), e);
+                aiResponse = null;
+                break;
             }
         }
 
-        String requirementId = extractRequirementId(aiResponse);
-        String analise = extractAnalise(aiResponse);
-        String refinedRequirementText = extractRefinedRequirement(aiResponse);
-        boolean hasConflict = hasConflictDetected(aiResponse);
+        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
+        boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
+        
+        String requirementId = isPartialProcessing ? "REQ-TEMP-" + System.currentTimeMillis() : extractRequirementId(aiResponse);
+        String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
+        String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
+        boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
 
         if (requirementId.equals("REQ-UNKNOWN")) {
             requirementId = "REQ-TEMP-" + System.currentTimeMillis();
         }
 
-        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
-        
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
                 refinedRequirementText = aiResponse;
@@ -114,7 +116,8 @@ public class RequirementService {
             if (isAiResponseValid) {
                 analise = aiResponse;
             } else {
-                analise = "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
+                String partialWarning = isPartialProcessing ? "⚠️ PROCESSAMENTO PARCIAL: A IA não respondeu corretamente. " : "";
+                analise = partialWarning + "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
             }
         }
 
@@ -183,7 +186,8 @@ public class RequirementService {
         }
 
         UUID requirementSetId = requirement.getRequirementSet().getId();
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString());
+        String requirementSetName = requirement.getRequirementSet().getName();
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString(), requirementSetName);
         
         String aiResponse = null;
         int retryCount = 0;
@@ -209,21 +213,23 @@ public class RequirementService {
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
                 }
-                throw new RuntimeException("Erro ao chamar IA após " + MAX_RETRIES + " tentativas: " + e.getMessage(), e);
+                aiResponse = null;
+                break;
             }
         }
 
-        String requirementId = extractRequirementId(aiResponse);
-        String analise = extractAnalise(aiResponse);
-        String refinedRequirementText = extractRefinedRequirement(aiResponse);
-        boolean hasConflict = hasConflictDetected(aiResponse);
+        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
+        boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
+        
+        String requirementId = isPartialProcessing ? "REQ-TEMP-" + System.currentTimeMillis() : extractRequirementId(aiResponse);
+        String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
+        String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
+        boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
 
         if (requirementId.equals("REQ-UNKNOWN")) {
             requirementId = "REQ-TEMP-" + System.currentTimeMillis();
         }
 
-        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
-        
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
                 refinedRequirementText = aiResponse;
@@ -236,7 +242,8 @@ public class RequirementService {
             if (isAiResponseValid) {
                 analise = aiResponse;
             } else {
-                analise = "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
+                String partialWarning = isPartialProcessing ? "⚠️ PROCESSAMENTO PARCIAL: A IA não respondeu corretamente. " : "";
+                analise = partialWarning + "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
             }
         }
 
@@ -278,8 +285,14 @@ public class RequirementService {
         );
     }
 
-    private String findRelevantContext(String userQuery, String projectId) {
+    private String findRelevantContext(String userQuery, String projectId, String requirementSetName) {
         Embedding queryEmbedding = embeddingModel.embed(userQuery).content();
+
+        StringBuilder contextBuilder = new StringBuilder();
+        
+        if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
+            contextBuilder.append("PROJETO/CONJUNTO DE REQUISITOS: ").append(requirementSetName).append("\n\n");
+        }
 
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
@@ -290,26 +303,28 @@ public class RequirementService {
 
         EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
 
-        if (result.matches().isEmpty()) {
-            return "Nenhum requisito anterior relevante encontrado.";
-        }
-
-        final int MAX_CONTEXT_LENGTH = 2000;
-        StringBuilder contextBuilder = new StringBuilder();
-        
-        for (var match : result.matches()) {
-            String text = match.embedded().text();
-            if (contextBuilder.length() + text.length() + 5 > MAX_CONTEXT_LENGTH) {
-                int remaining = MAX_CONTEXT_LENGTH - contextBuilder.length() - 5;
-                if (remaining > 50) {
-                    contextBuilder.append(text, 0, remaining).append("\n...");
+        if (!result.matches().isEmpty()) {
+            contextBuilder.append("REQUISITOS JÁ APROVADOS NESTE PROJETO:\n");
+            final int MAX_CONTEXT_LENGTH = 3000;
+            int usedLength = contextBuilder.length();
+            
+            for (var match : result.matches()) {
+                String text = match.embedded().text();
+                if (usedLength + text.length() + 5 > MAX_CONTEXT_LENGTH) {
+                    int remaining = MAX_CONTEXT_LENGTH - usedLength - 5;
+                    if (remaining > 50) {
+                        contextBuilder.append(text, 0, remaining).append("\n...");
+                    }
+                    break;
                 }
-                break;
+                if (usedLength > (requirementSetName != null ? requirementSetName.length() + 50 : 0)) {
+                    contextBuilder.append("\n---\n");
+                }
+                contextBuilder.append(text);
+                usedLength = contextBuilder.length();
             }
-            if (contextBuilder.length() > 0) {
-                contextBuilder.append("\n---\n");
-            }
-            contextBuilder.append(text);
+        } else {
+            contextBuilder.append("Nenhum requisito anterior relevante encontrado neste projeto.\n");
         }
 
         return contextBuilder.toString();
@@ -378,35 +393,43 @@ public class RequirementService {
         if (aiResponse.length() < 50) {
             return null;
         }
+        
         Pattern pattern1 = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Critérios|Estimativa|Status)|$)",
+                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*Estimativa de Pontos|$)",
                 Pattern.DOTALL);
         Matcher matcher1 = pattern1.matcher(aiResponse);
         if (matcher1.find()) {
             String result = matcher1.group(1).trim();
-            if (!result.isEmpty() && result.length() >= 30 && !result.matches("^\\d+$")) {
+            if (!result.isEmpty() && result.length() >= 50 && !result.matches("^\\d+$")) {
                 return result;
             }
         }
+        
         int index = aiResponse.toLowerCase().indexOf("requisito refinado");
         if (index >= 0) {
             String after = aiResponse.substring(index + "requisito refinado".length())
-                .replaceFirst("^\\s*:?\\s*", "");
-            int next = Math.min(
-                Math.min(
-                    after.toLowerCase().indexOf("critérios"),
-                    after.toLowerCase().indexOf("estimativa")
-                ),
-                after.toLowerCase().indexOf("status")
-            );
+                .replaceFirst("^\\s*:?\\*\\*?\\s*", "");
+            
+            int nextEstimativa = after.toLowerCase().indexOf("estimativa de pontos");
+            int nextStatus = after.toLowerCase().indexOf("status de validação");
+            
+            int next = -1;
+            if (nextEstimativa > 0 && nextStatus > 0) {
+                next = Math.min(nextEstimativa, nextStatus);
+            } else if (nextEstimativa > 0) {
+                next = nextEstimativa;
+            } else if (nextStatus > 0) {
+                next = nextStatus;
+            }
+            
             if (next > 0) {
                 String result = after.substring(0, next).trim();
-                if (result.length() >= 30 && !result.matches("^\\d+$")) {
+                if (result.length() >= 50 && !result.matches("^\\d+$")) {
                     return result;
                 }
             } else {
                 String result = after.trim();
-                if (result.length() >= 30 && !result.matches("^\\d+$")) {
+                if (result.length() >= 50 && !result.matches("^\\d+$")) {
                     return result;
                 }
             }
