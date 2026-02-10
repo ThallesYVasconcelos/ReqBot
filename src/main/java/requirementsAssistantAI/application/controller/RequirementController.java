@@ -14,6 +14,7 @@ import java.util.UUID;
 import requirementsAssistantAI.application.service.RequirementService;
 import requirementsAssistantAI.dto.CreateRequirementRequest;
 import requirementsAssistantAI.dto.RequirementDTO;
+import requirementsAssistantAI.dto.UpdateRequirementRequest;
 
 @RestController
 @RequestMapping("/api/requirements")
@@ -32,6 +33,14 @@ public class RequirementController {
                 Objects.requireNonNull(request.getRequirementSetId())
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<RequirementDTO>> getAllRequirements(
+            @RequestParam(required = false) UUID requirementSetId,
+            @RequestParam(required = false) String status) {
+        List<RequirementDTO> requirements = requirementService.getAllRequirements(requirementSetId, status);
+        return ResponseEntity.ok(requirements);
     }
 
     @GetMapping("/{id}")
@@ -61,7 +70,7 @@ public class RequirementController {
     @PutMapping("/{id}")
     public ResponseEntity<RequirementDTO> updatePendingRequirement(
             @PathVariable @NonNull UUID id,
-            @Valid @RequestBody CreateRequirementRequest request) {
+            @Valid @RequestBody UpdateRequirementRequest request) {
         RequirementDTO dto = requirementService.updatePendingRequirement(
                 Objects.requireNonNull(id),
                 request.getRequirement()

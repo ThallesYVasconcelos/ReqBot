@@ -51,18 +51,14 @@ public class AuthService {
         if ("test-admin".equals(idToken)) {
             return loginAsTestAdmin();
         }
-        
         if ("id-user".equals(idToken)) {
             return loginAsTestUser();
         }
-        
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
         String email = info.getEmail().toLowerCase();
-        
         if (!isEmailAllowedAsUser(email)) {
             throw new ForbiddenException("Acesso negado: este email não está autorizado. Apenas emails @ccc.ufcg.edu.br são permitidos.");
         }
-        
         AppUser user = upsertUser(info, AuthRole.USER);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.USER);
     }
@@ -72,14 +68,11 @@ public class AuthService {
         if ("test-admin".equals(idToken)) {
             return loginAsTestAdmin();
         }
-        
         GoogleTokenInfo info = googleTokenVerifierService.verifyIdToken(idToken);
         String email = info.getEmail().toLowerCase();
-        
         if (!isEmailAllowedAsAdmin(email)) {
             throw new ForbiddenException("Acesso negado: este email não está autorizado como ADMIN");
         }
-        
         AppUser user = upsertUser(info, AuthRole.ADMIN);
         return issueToken(user.getId(), user.getEmail(), user.getRole(), AuthRole.ADMIN);
     }

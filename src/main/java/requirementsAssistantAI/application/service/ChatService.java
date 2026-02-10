@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 
 import requirementsAssistantAI.application.ports.ChatAiService;
 import requirementsAssistantAI.dto.ChatResponseDTO;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ChatService {
@@ -43,8 +44,9 @@ public class ChatService {
         this.embeddingStore = embeddingStore;
     }
 
+    @Transactional(readOnly = true)
     public ChatResponseDTO answerQuestion(String question) {
-        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrue()
+        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
                 .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo. Configure o chatbot através do endpoint /api/admin/chatbot/config"));
 
         if (!config.isAvailableNow()) {
@@ -53,15 +55,28 @@ public class ChatService {
                     "Horário de atendimento: " + formatTimeRange(config.getStartTime(), config.getEndTime()),
                     question,
                     LocalDateTime.now(),
+                    false,
                     false
             );
         }
 
-        String projectId = config.getRequirementSet().getId().toString();
-        String context = findRelevantContext(question, projectId);
-        String answer = chatAiService.answerQuestion(question, context);
-
-        return new ChatResponseDTO(answer, question, LocalDateTime.now(), true);
+        try {
+            String projectId = config.getRequirementSet().getId().toString();
+            String context = findRelevantContext(question, projectId);
+            String answer = chatAiService.answerQuestion(question, context);
+            if (answer == null || answer.trim().isEmpty()) {
+                answer = "Desculpe, não consegui processar sua pergunta. Por favor, tente novamente ou reformule sua pergunta.";
+            }
+            return new ChatResponseDTO(answer, question, LocalDateTime.now(), true, true);
+        } catch (Exception e) {
+            return new ChatResponseDTO(
+                    "Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.",
+                    question,
+                    LocalDateTime.now(),
+                    false,
+                    true
+            );
+        }
     }
 
     private String findRelevantContext(String userQuestion, String projectId) {

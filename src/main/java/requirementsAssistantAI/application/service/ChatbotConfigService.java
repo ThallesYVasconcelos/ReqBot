@@ -51,27 +51,30 @@ public class ChatbotConfigService {
         return convertToDTO(config);
     }
 
+    @Transactional(readOnly = true)
     public ChatbotConfigDTO getActiveConfig() {
-        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrue()
+        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
                 .orElseThrow(() -> new RuntimeException("Nenhuma configuração de chatbot ativa encontrada"));
         return convertToDTO(config);
     }
 
+    @Transactional(readOnly = true)
     public List<ChatbotConfigDTO> getAllConfigs() {
-        return chatbotConfigRepository.findAll().stream()
+        return chatbotConfigRepository.findAllWithRequirementSet().stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public ChatbotConfigDTO getConfigById(@NonNull UUID id) {
-        ChatbotConfig config = chatbotConfigRepository.findById(Objects.requireNonNull(id))
+        ChatbotConfig config = chatbotConfigRepository.findByIdWithRequirementSet(Objects.requireNonNull(id))
                 .orElseThrow(() -> new RuntimeException("Configuração não encontrada com ID: " + id));
         return convertToDTO(config);
     }
 
     @Transactional
     public ChatbotConfigDTO toggleConfig(@NonNull UUID id, Boolean isActive) {
-        ChatbotConfig config = chatbotConfigRepository.findById(Objects.requireNonNull(id))
+        ChatbotConfig config = chatbotConfigRepository.findByIdWithRequirementSet(Objects.requireNonNull(id))
                 .orElseThrow(() -> new RuntimeException("Configuração não encontrada com ID: " + id));
 
         if (Boolean.TRUE.equals(isActive) && !Boolean.TRUE.equals(config.getIsActive())) {
@@ -83,6 +86,10 @@ public class ChatbotConfigService {
 
         config.setIsActive(isActive);
         config = chatbotConfigRepository.save(config);
+        // Força o carregamento do RequirementSet antes de converter para DTO
+        if (config.getRequirementSet() != null) {
+            config.getRequirementSet().getId();
+        }
         return convertToDTO(config);
     }
 

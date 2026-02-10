@@ -86,10 +86,24 @@ public class ChatbotConfig {
         if (startTime == null || endTime == null) {
             return true;
         }
-        if (startTime.isBefore(endTime) || startTime.equals(endTime)) {
-            return !now.isBefore(startTime) && !now.isAfter(endTime);
-        } else {
-            return !now.isBefore(startTime) || !now.isAfter(endTime);
+        
+        boolean isAvailable;
+        
+        // Horário normal (ex: 08:00 às 18:00)
+        if (startTime.isBefore(endTime)) {
+            // Disponível se: now >= startTime && now < endTime
+            isAvailable = (now.isAfter(startTime) || now.equals(startTime)) && 
+                         now.isBefore(endTime);
+        } 
+        // Horário que cruza meia-noite (ex: 23:00 às 02:00)
+        else if (startTime.isAfter(endTime)) {
+            // Disponível se: now >= startTime OU now < endTime
+            isAvailable = (now.isAfter(startTime) || now.equals(startTime)) || 
+                         now.isBefore(endTime);
         }
+        else {
+            isAvailable = now.equals(startTime);
+        }
+        return isAvailable;
     }
 }

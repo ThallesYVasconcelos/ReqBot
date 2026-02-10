@@ -30,4 +30,10 @@ public class ChatbotUserController {
         List<RequirementDTO> requirements = chatbotUserService.getApprovedRequirements();
         return ResponseEntity.ok(requirements);
     }
+
+    @GetMapping("/chatbot/availability")
+    public ResponseEntity<Boolean> getAvailability() {
+        boolean isAvailable = chatbotUserService.isChatbotAvailable();
+        return ResponseEntity.ok(isAvailable);
+    }
 }

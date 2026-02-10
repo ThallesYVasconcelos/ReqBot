@@ -95,14 +95,12 @@ public class RequirementService {
         boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
         boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
         
-        String requirementId = isPartialProcessing ? "REQ-TEMP-" + System.currentTimeMillis() : extractRequirementId(aiResponse);
         String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
         String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
         boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
 
-        if (requirementId.equals("REQ-UNKNOWN")) {
-            requirementId = "REQ-TEMP-" + System.currentTimeMillis();
-        }
+        // Sempre gerar ID sequencial único por projeto (não usar o retornado pela IA)
+        String requirementId = generateNextRequirementId(requirementSetId);
 
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
@@ -140,17 +138,35 @@ public class RequirementService {
         return convertToDTO(requirement);
     }
 
+    @Transactional(readOnly = true)
     public RequirementDTO getRequirementById(@NonNull UUID id) {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(id))
                 .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + id));
         return convertToDTO(requirement);
     }
 
+    @Transactional(readOnly = true)
     public List<RequirementDTO> getRequirementsBySetId(@NonNull UUID requirementSetId) {
         List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(Objects.requireNonNull(requirementSetId));
         return requirements.stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<RequirementDTO> getAllRequirements(UUID requirementSetId, String status) {
+        List<Requirement> requirements;
+        if (requirementSetId != null) {
+            requirements = requirementRepository.findByRequirementSet_Id(requirementSetId);
+        } else {
+            requirements = requirementRepository.findAll();
+        }
+        
+        return requirements.stream()
+                .filter(req -> status == null || status.isEmpty() || status.equals(req.getStatus()))
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<RequirementHistory> getRequirementHistory(@NonNull UUID requirementId) {
         return requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(Objects.requireNonNull(requirementId));
     }
@@ -221,14 +237,12 @@ public class RequirementService {
         boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
         boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
         
-        String requirementId = isPartialProcessing ? "REQ-TEMP-" + System.currentTimeMillis() : extractRequirementId(aiResponse);
         String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
         String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
         boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
 
-        if (requirementId.equals("REQ-UNKNOWN")) {
-            requirementId = "REQ-TEMP-" + System.currentTimeMillis();
-        }
+        // Na atualização, manter o ID existente (não muda)
+        // requirementId já está definido no requirement, não alterar
 
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
@@ -247,7 +261,7 @@ public class RequirementService {
             }
         }
 
-        requirement.setRequirementId(requirementId);
+        // Não alterar requirementId no update - manter o original
         requirement.setRefinedRequirement(refinedRequirementText);
         requirement.setAnalise(analise);
         requirement.setStatus(hasConflict ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
@@ -330,26 +344,26 @@ public class RequirementService {
         return contextBuilder.toString();
     }
 
-    private String extractRequirementId(String aiResponse) {
-        if (aiResponse == null || aiResponse.trim().isEmpty()) {
-            return "REQ-UNKNOWN";
+    /**
+     * Gera o próximo ID sequencial único para o projeto (REQ-001, REQ-002, etc.).
+     * Não depende da resposta da IA - evita duplicação de IDs.
+     */
+    private String generateNextRequirementId(@NonNull UUID requirementSetId) {
+        List<Requirement> existing = requirementRepository.findByRequirementSet_Id(Objects.requireNonNull(requirementSetId));
+        int maxNum = 0;
+        Pattern pattern = Pattern.compile("REQ-(\\d+)(?:-|$)", Pattern.CASE_INSENSITIVE);
+        for (Requirement r : existing) {
+            String id = r.getRequirementId();
+            if (id == null) continue;
+            Matcher m = pattern.matcher(id);
+            if (m.find()) {
+                try {
+                    int n = Integer.parseInt(m.group(1));
+                    if (n > maxNum) maxNum = n;
+                } catch (NumberFormatException ignored) {}
+            }
         }
-        Pattern pattern1 = Pattern.compile("(REQ-\\d{4}-\\d+)", Pattern.CASE_INSENSITIVE);
-        Matcher matcher1 = pattern1.matcher(aiResponse);
-        if (matcher1.find()) {
-            return matcher1.group(1);
-        }
-        Pattern pattern2 = Pattern.compile("(REQ-\\d+)", Pattern.CASE_INSENSITIVE);
-        Matcher matcher2 = pattern2.matcher(aiResponse);
-        if (matcher2.find()) {
-            return matcher2.group(1);
-        }
-        Pattern pattern3 = Pattern.compile("(REQ-\\d+)\\s*-", Pattern.CASE_INSENSITIVE);
-        Matcher matcher3 = pattern3.matcher(aiResponse);
-        if (matcher3.find()) {
-            return matcher3.group(1);
-        }
-        return "REQ-UNKNOWN";
+        return String.format("REQ-%03d", maxNum + 1);
     }
 
     private String extractAnalise(String aiResponse) {
