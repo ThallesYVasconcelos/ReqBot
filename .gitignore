@@ -1,5 +1,6 @@
 HELP.md
 target/
+*.class
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -14,11 +15,14 @@ target/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/
 *.iws
 *.iml
 *.ipr
 out/
+
+### Cursor IDE ###
+.cursor/
 
 ### NetBeans ###
 /nbproject/private/
@@ -61,6 +65,8 @@ src/main/resources/application.properties
 *.p12
 *.crt
 *.csr
+secrets/
+*.secret
 
 ### Logs ###
 *.log
