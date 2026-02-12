@@ -74,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/chatbot/**").authenticated()
                         .requestMatchers("/api/user/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/requirements").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/requirements/refine").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/requirements/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").hasRole("ADMIN")
                         .requestMatchers("/api/requirements/*/approve").hasRole("ADMIN")

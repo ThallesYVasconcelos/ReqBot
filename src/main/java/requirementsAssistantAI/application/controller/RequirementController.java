@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import requirementsAssistantAI.application.service.RequirementService;
 import requirementsAssistantAI.dto.CreateRequirementRequest;
+import requirementsAssistantAI.dto.RefineRequirementRequest;
 import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.UpdateRequirementRequest;
 
@@ -33,6 +34,15 @@ public class RequirementController {
                 Objects.requireNonNull(request.getRequirementSetId())
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @PostMapping("/refine")
+    public ResponseEntity<RequirementDTO> refineRequirement(@Valid @RequestBody RefineRequirementRequest request) {
+        RequirementDTO dto = requirementService.refineRequirement(
+                request.getRequirement(),
+                Objects.requireNonNull(request.getRequirementSetId())
+        );
+        return ResponseEntity.ok(dto);
     }
 
     @GetMapping

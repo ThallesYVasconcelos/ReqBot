@@ -15,10 +15,12 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.dto.RequirementDTO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -33,6 +35,11 @@ public class RequirementService {
 
     private static final String STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
     private static final String STATUS_CONFLICT = "CONFLICT";
+
+    @Value("${ai.context.max-approved-results:5}")
+    private int maxApprovedResults;
+    @Value("${ai.context.max-length:2500}")
+    private int maxContextLength;
 
     private final AssistantAiService assistantAiService;
     private final RequirementRepository requirementRepository;
@@ -61,8 +68,51 @@ public class RequirementService {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
                 .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
 
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString(), requirementSet.getName());
-        
+        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName());
+        String requirementId = generateNextRequirementId(requirementSetId);
+
+        Requirement requirement = new Requirement();
+        requirement.setRequirementId(requirementId);
+        requirement.setRefinedRequirement(result.refinedRequirementText());
+        requirement.setAnalise(result.analise());
+        requirement.setStatus(result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
+        requirement.setRequirementSet(requirementSet);
+
+        requirement = requirementRepository.save(requirement);
+        requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
+
+        return requirement;
+    }
+
+    /**
+     * Refina o requisito com IA sem persistir no banco.
+     * Usado para "Processar com IA" e "Refazer" no frontend.
+     */
+    public RequirementDTO refineRequirement(String rawRequirement, @NonNull UUID requirementSetId) {
+        RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
+                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
+
+        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName());
+
+        LocalDateTime now = LocalDateTime.now();
+        return new RequirementDTO(
+                null,
+                "REQ-TEMP",
+                result.refinedRequirementText(),
+                result.analise(),
+                result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL,
+                now,
+                now,
+                requirementSet.getId(),
+                requirementSet.getName()
+        );
+    }
+
+    private record AiRefinementResult(String analise, String refinedRequirementText, boolean hasConflict) {}
+
+    private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName) {
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId, requirementSetName);
+
         String aiResponse = null;
         int retryCount = 0;
         final int MAX_RETRIES = 2;
@@ -71,7 +121,7 @@ public class RequirementService {
         while (retryCount <= MAX_RETRIES) {
             try {
                 aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
-                
+
                 if (aiResponse != null && aiResponse.length() >= MIN_RESPONSE_LENGTH) {
                     break;
                 } else if (retryCount < MAX_RETRIES) {
@@ -94,13 +144,10 @@ public class RequirementService {
 
         boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
         boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
-        
+
         String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
         String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
         boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
-
-        // Sempre gerar ID sequencial único por projeto (não usar o retornado pela IA)
-        String requirementId = generateNextRequirementId(requirementSetId);
 
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
@@ -109,7 +156,7 @@ public class RequirementService {
                 refinedRequirementText = "Como usuário do sistema, eu quero " + rawRequirement.toLowerCase() + " para melhorar a gestão do sistema.";
             }
         }
-        
+
         if (analise == null || analise.trim().isEmpty() || analise.length() < 20 || "Verifique o texto completo.".equals(analise)) {
             if (isAiResponseValid) {
                 analise = aiResponse;
@@ -119,17 +166,7 @@ public class RequirementService {
             }
         }
 
-        Requirement requirement = new Requirement();
-        requirement.setRequirementId(requirementId);
-        requirement.setRefinedRequirement(refinedRequirementText);
-        requirement.setAnalise(analise);
-        requirement.setStatus(hasConflict ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
-        requirement.setRequirementSet(requirementSet);
-
-        requirement = requirementRepository.save(requirement);
-        requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
-
-        return requirement;
+        return new AiRefinementResult(analise, refinedRequirementText, hasConflict);
     }
 
     @Transactional
@@ -203,68 +240,11 @@ public class RequirementService {
 
         UUID requirementSetId = requirement.getRequirementSet().getId();
         String requirementSetName = requirement.getRequirementSet().getName();
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId.toString(), requirementSetName);
-        
-        String aiResponse = null;
-        int retryCount = 0;
-        final int MAX_RETRIES = 2;
-        final int MIN_RESPONSE_LENGTH = 200;
+        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSetName);
 
-        while (retryCount <= MAX_RETRIES) {
-            try {
-                aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
-                
-                if (aiResponse != null && aiResponse.length() >= MIN_RESPONSE_LENGTH) {
-                    break;
-                } else if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    Thread.sleep(1000);
-                    continue;
-                } else {
-                    break;
-                }
-            } catch (Exception e) {
-                if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    continue;
-                }
-                aiResponse = null;
-                break;
-            }
-        }
-
-        boolean isAiResponseValid = aiResponse != null && aiResponse.length() >= 200;
-        boolean isPartialProcessing = aiResponse == null || !isAiResponseValid;
-        
-        String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
-        String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
-        boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
-
-        // Na atualização, manter o ID existente (não muda)
-        // requirementId já está definido no requirement, não alterar
-
-        if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
-            if (isAiResponseValid) {
-                refinedRequirementText = aiResponse;
-            } else {
-                refinedRequirementText = "Como usuário do sistema, eu quero " + rawRequirement.toLowerCase() + " para melhorar a gestão do sistema.";
-            }
-        }
-        
-        if (analise == null || analise.trim().isEmpty() || analise.length() < 20 || "Verifique o texto completo.".equals(analise)) {
-            if (isAiResponseValid) {
-                analise = aiResponse;
-            } else {
-                String partialWarning = isPartialProcessing ? "⚠️ PROCESSAMENTO PARCIAL: A IA não respondeu corretamente. " : "";
-                analise = partialWarning + "O requisito foi processado, mas a resposta da IA foi incompleta. Requisito original: " + rawRequirement;
-            }
-        }
-
-        // Não alterar requirementId no update - manter o original
-        requirement.setRefinedRequirement(refinedRequirementText);
-        requirement.setAnalise(analise);
-        requirement.setStatus(hasConflict ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
+        requirement.setRefinedRequirement(result.refinedRequirementText());
+        requirement.setAnalise(result.analise());
+        requirement.setStatus(result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
 
         requirement = requirementRepository.save(requirement);
         requirementHistoryRepository.save(new RequirementHistory(requirement, "UPDATED"));
@@ -310,7 +290,7 @@ public class RequirementService {
 
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
-                .maxResults(5)
+                .maxResults(maxApprovedResults)
                 .minScore(0.7)
                 .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
                 .build();
@@ -319,13 +299,12 @@ public class RequirementService {
 
         if (!result.matches().isEmpty()) {
             contextBuilder.append("REQUISITOS JÁ APROVADOS NESTE PROJETO:\n");
-            final int MAX_CONTEXT_LENGTH = 3000;
             int usedLength = contextBuilder.length();
             
             for (var match : result.matches()) {
                 String text = match.embedded().text();
-                if (usedLength + text.length() + 5 > MAX_CONTEXT_LENGTH) {
-                    int remaining = MAX_CONTEXT_LENGTH - usedLength - 5;
+                if (usedLength + text.length() + 5 > maxContextLength) {
+                    int remaining = maxContextLength - usedLength - 5;
                     if (remaining > 50) {
                         contextBuilder.append(text, 0, remaining).append("\n...");
                     }
@@ -344,10 +323,7 @@ public class RequirementService {
         return contextBuilder.toString();
     }
 
-    /**
-     * Gera o próximo ID sequencial único para o projeto (REQ-001, REQ-002, etc.).
-     * Não depende da resposta da IA - evita duplicação de IDs.
-     */
+
     private String generateNextRequirementId(@NonNull UUID requirementSetId) {
         List<Requirement> existing = requirementRepository.findByRequirementSet_Id(Objects.requireNonNull(requirementSetId));
         int maxNum = 0;

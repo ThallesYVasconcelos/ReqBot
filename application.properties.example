@@ -5,6 +5,14 @@ ai.provider=gemini
 gemini.api-key=SUA_GEMINI_API_KEY_AQUI
 gemini.model=gemini-2.5-flash
 
+# Otimização de tokens (reduz consumo da API)
+ai.context.max-approved-results=5
+ai.context.max-length=2500
+ai.chat.max-rag-results=3
+ai.chat.cache.enabled=true
+ai.chat.cache.max-entries=50
+ai.chat.cache.ttl-minutes=10
+
 # Configurações do Banco de Dados (PostgreSQL)
 spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
 spring.datasource.username=postgres

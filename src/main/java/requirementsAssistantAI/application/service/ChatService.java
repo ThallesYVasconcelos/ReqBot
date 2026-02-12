@@ -11,9 +11,12 @@ import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -24,6 +27,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ChatService {
+
+    @Value("${ai.chat.max-rag-results:3}")
+    private int maxRagResults;
+    @Value("${ai.chat.cache.enabled:true}")
+    private boolean cacheEnabled;
+    @Value("${ai.chat.cache.max-entries:50}")
+    private int cacheMaxEntries;
+    @Value("${ai.chat.cache.ttl-minutes:10}")
+    private int cacheTtlMinutes;
+
+    private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 
     private final ChatbotConfigRepository chatbotConfigRepository;
     private final RequirementRepository requirementRepository;
@@ -62,10 +76,21 @@ public class ChatService {
 
         try {
             String projectId = config.getRequirementSet().getId().toString();
+            String cacheKey = projectId + "||" + normalizeQuestion(question);
+            if (cacheEnabled) {
+                CachedAnswer cached = answerCache.get(cacheKey);
+                if (cached != null && !cached.isExpired(cacheTtlMinutes)) {
+                    return new ChatResponseDTO(cached.answer, question, LocalDateTime.now(), true, true);
+                }
+            }
             String context = findRelevantContext(question, projectId);
-            String answer = chatAiService.answerQuestion(question, context);
-            if (answer == null || answer.trim().isEmpty()) {
-                answer = "Desculpe, não consegui processar sua pergunta. Por favor, tente novamente ou reformule sua pergunta.";
+            String rawAnswer = chatAiService.answerQuestion(question, context);
+            String answer = (rawAnswer == null || rawAnswer.trim().isEmpty())
+                    ? "Desculpe, não consegui processar sua pergunta. Por favor, tente novamente ou reformule sua pergunta."
+                    : rawAnswer;
+            if (cacheEnabled && rawAnswer != null && !rawAnswer.trim().isEmpty()) {
+                evictIfNeeded();
+                answerCache.put(cacheKey, new CachedAnswer(rawAnswer, LocalDateTime.now()));
             }
             return new ChatResponseDTO(answer, question, LocalDateTime.now(), true, true);
         } catch (Exception e) {
@@ -93,7 +118,7 @@ public class ChatService {
         Embedding queryEmbedding = embeddingModel.embed(userQuestion).content();
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
-                .maxResults(5)
+                .maxResults(maxRagResults)
                 .minScore(0.6)
                 .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
                 .build();
@@ -101,7 +126,9 @@ public class ChatService {
         EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
 
         if (result.matches().isEmpty()) {
+            int limit = Math.min(approvedRequirements.size(), maxRagResults);
             return approvedRequirements.stream()
+                    .limit(limit)
                     .map(req -> req.getRequirementId() + ": " + req.getRefinedRequirement())
                     .collect(Collectors.joining("\n---\n"));
         }
@@ -109,6 +136,32 @@ public class ChatService {
         return result.matches().stream()
                 .map(m -> m.embedded().text())
                 .collect(Collectors.joining("\n---\n"));
+    }
+
+    private String normalizeQuestion(String q) {
+        if (q == null) return "";
+        return q.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    private void evictIfNeeded() {
+        if (answerCache.size() >= cacheMaxEntries) {
+            answerCache.entrySet().removeIf(e -> e.getValue().isExpired(cacheTtlMinutes));
+            if (answerCache.size() >= cacheMaxEntries) {
+                answerCache.clear();
+            }
+        }
+    }
+
+    private static class CachedAnswer {
+        final String answer;
+        final LocalDateTime createdAt;
+        CachedAnswer(String answer, LocalDateTime createdAt) {
+            this.answer = answer;
+            this.createdAt = createdAt;
+        }
+        boolean isExpired(int ttlMinutes) {
+            return createdAt.plusMinutes(ttlMinutes).isBefore(LocalDateTime.now());
+        }
     }
 
     private String formatTimeRange(java.time.LocalTime startTime, java.time.LocalTime endTime) {
