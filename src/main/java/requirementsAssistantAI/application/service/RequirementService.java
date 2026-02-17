@@ -169,6 +169,7 @@ public class RequirementService {
                 .replaceAll("\\*+", "")
                 .replaceAll("#+", "")
                 .replaceAll("\\s{2,}", " ")
+                .replaceFirst("^\\s*:?\\s*", "")
                 .trim();
     }
 
