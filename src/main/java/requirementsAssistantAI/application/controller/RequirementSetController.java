@@ -27,7 +27,7 @@ public class RequirementSetController {
 
     @PostMapping
     public ResponseEntity<RequirementSetDTO> createRequirementSet(@Valid @RequestBody CreateRequirementSetRequest request) {
-        RequirementSetDTO requirementSetDTO = requirementSetService.createRequirementSet(request.getName());
+        RequirementSetDTO requirementSetDTO = requirementSetService.createRequirementSet(request.getName(),request.getDescription());
         return ResponseEntity.status(HttpStatus.CREATED).body(requirementSetDTO);
     }
 

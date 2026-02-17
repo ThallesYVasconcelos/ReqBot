@@ -69,15 +69,17 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/api/test/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        // Admin: gerencia requirements, projects, chatbot config
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/chatbot/**").authenticated()
                         .requestMatchers("/api/user/**").authenticated()
+                        // Requirements: apenas ADMIN pode criar/editar/aprovar; USER autenticado pode listar
                         .requestMatchers(HttpMethod.POST, "/api/requirements").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requirements/refine").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/requirements/save").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/requirements/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").hasRole("ADMIN")
-                        .requestMatchers("/api/requirements/*/approve").hasRole("ADMIN")
                         .requestMatchers("/api/requirements/*/history").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requirements/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/requirement-sets").hasRole("ADMIN")

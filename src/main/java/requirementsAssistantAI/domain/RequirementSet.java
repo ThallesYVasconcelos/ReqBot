@@ -48,9 +48,9 @@ public class RequirementSet {
     public RequirementSet() {
     }
 
-    public RequirementSet(String name) {
+    public RequirementSet(String name,String description) {
         this.name = name;
-        this.description = (name != null) ? name : "";
+        this.description = description;
     }
 
     public List<Requirement> getRequirements() {

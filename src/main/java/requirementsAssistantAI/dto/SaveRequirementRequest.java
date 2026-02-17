@@ -1,12 +1,19 @@
 package requirementsAssistantAI.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+import java.util.UUID;
+
 @Getter
 @Setter
-public class UpdateRequirementRequest {
+public class SaveRequirementRequest {
+
+    @NotNull(message = "O ID do RequirementSet é obrigatório")
+    private UUID requirementSetId;
 
     @NotBlank(message = "O prompt/requisito original não pode ser vazio")
     private String rawRequirement;
@@ -14,13 +21,17 @@ public class UpdateRequirementRequest {
     @NotBlank(message = "O requisito refinado não pode ser vazio")
     private String refinedRequirement;
 
-    /** true = usar versão refinada como final, false = usar versão original (raw) como final */
     private boolean useRefinedVersion = true;
 
-    public UpdateRequirementRequest() {
+    private String analise;
+
+    private List<String> ambiguityWarnings;
+
+    public SaveRequirementRequest() {
     }
 
-    public UpdateRequirementRequest(String rawRequirement, String refinedRequirement, boolean useRefinedVersion) {
+    public SaveRequirementRequest(UUID requirementSetId, String rawRequirement, String refinedRequirement, boolean useRefinedVersion) {
+        this.requirementSetId = requirementSetId;
         this.rawRequirement = rawRequirement;
         this.refinedRequirement = refinedRequirement;
         this.useRefinedVersion = useRefinedVersion;

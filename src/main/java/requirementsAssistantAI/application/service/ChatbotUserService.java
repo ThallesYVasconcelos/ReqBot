@@ -43,9 +43,7 @@ public class ChatbotUserService {
                 config.getRequirementSet().getId()
         );
         
-        return allRequirements.stream()
-                .filter(req -> "APPROVED".equals(req.getStatus()))
-                .collect(Collectors.toList());
+        return allRequirements;
     }
 
     @Transactional(readOnly = true)

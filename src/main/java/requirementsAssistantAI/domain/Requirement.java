@@ -4,7 +4,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import requirementsAssistantAI.infrastructure.config.StringListConverter;
+
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -25,12 +28,16 @@ public class Requirement {
 
     @Column(name="requirement_hash")
     private String requirementHash;
+
+    @Column(name = "raw_requirement", columnDefinition = "TEXT")
+    private String rawRequirement;
     
     @Column(name = "analise", columnDefinition = "TEXT")
     private String analise;
 
-    @Column(name = "status", nullable = false)
-    private String status;
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "ambiguity_warnings", columnDefinition = "TEXT")
+    private List<String> ambiguityWarnings;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -47,9 +54,6 @@ public class Requirement {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        if (status == null) {
-            status = "PENDING";
-        }
     }
 
     @PreUpdate

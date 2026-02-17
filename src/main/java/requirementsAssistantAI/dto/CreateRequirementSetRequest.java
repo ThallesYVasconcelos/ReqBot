@@ -8,17 +8,17 @@ public class CreateRequirementSetRequest {
     @NotBlank(message = "O nome do RequirementSet não pode ser vazio")
     @Size(min = 1, max = 255, message = "O nome deve ter entre 1 e 255 caracteres")
     private String name;
+    @NotBlank(message = "A descrição do RequirementSet não pode ser vazia")
+    @Size(min = 1, max = 2000, message = "A descrição deve ter entre 1 e 2000 caracteres")
+    private String description;
 
-    // Construtor padrão
     public CreateRequirementSetRequest() {
     }
 
-    // Construtor com parâmetro
-    public CreateRequirementSetRequest(String name) {
+    public CreateRequirementSetRequest(String name, String description) {
         this.name = name;
+        this.description = description;
     }
-
-    // Getters e Setters
     public String getName() {
         return name;
     }
@@ -26,4 +26,8 @@ public class CreateRequirementSetRequest {
     public void setName(String name) {
         this.name = name;
     }
+    public String getDescription() {
+        return this.description;
+    }
+    public void setDescription(String description) {this.description = description;}
 }

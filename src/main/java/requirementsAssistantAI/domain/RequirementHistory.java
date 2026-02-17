@@ -33,9 +33,6 @@ public class RequirementHistory {
     @Column(name = "analise", columnDefinition = "TEXT")
     private String analise;
 
-    @Column(name = "status")
-    private String status;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -56,7 +53,6 @@ public class RequirementHistory {
         this.requirementId = requirement.getRequirementId();
         this.refinedRequirement = requirement.getRefinedRequirement();
         this.analise = requirement.getAnalise();
-        this.status = requirement.getStatus();
         this.actionType = actionType;
     }
 

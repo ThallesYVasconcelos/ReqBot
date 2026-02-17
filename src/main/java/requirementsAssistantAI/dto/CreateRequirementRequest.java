@@ -21,7 +21,7 @@ public class CreateRequirementRequest {
     public CreateRequirementRequest() {
     }
 
-    public CreateRequirementRequest(String requirement,String description, UUID requirementSetId) {
+    public CreateRequirementRequest(String requirement, UUID requirementSetId) {
         this.requirement = requirement;
         this.requirementSetId = requirementSetId;
     }

@@ -13,14 +13,19 @@ import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
+import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.dto.RequirementDTO;
+import requirementsAssistantAI.dto.SaveRequirementRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import requirementsAssistantAI.dto.RequirementReportDTO;
+
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -28,13 +33,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static dev.langchain4j.data.document.Metadata.metadata;
+import dev.langchain4j.data.document.Metadata;
 
 @Service
 public class RequirementService {
-
-    private static final String STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
-    private static final String STATUS_CONFLICT = "CONFLICT";
 
     @Value("${ai.context.max-approved-results:5}")
     private int maxApprovedResults;
@@ -63,44 +65,25 @@ public class RequirementService {
         this.embeddingStore = embeddingStore;
     }
 
-    @Transactional
-    public Requirement processAndSaveRequirement(String rawRequirement, @NonNull UUID requirementSetId) {
-        RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
-
-        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName());
-        String requirementId = generateNextRequirementId(requirementSetId);
-
-        Requirement requirement = new Requirement();
-        requirement.setRequirementId(requirementId);
-        requirement.setRefinedRequirement(result.refinedRequirementText());
-        requirement.setAnalise(result.analise());
-        requirement.setStatus(result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
-        requirement.setRequirementSet(requirementSet);
-
-        requirement = requirementRepository.save(requirement);
-        requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
-
-        return requirement;
-    }
-
     /**
      * Refina o requisito com IA sem persistir no banco.
-     * Usado para "Processar com IA" e "Refazer" no frontend.
+     * Usuário pode editar prompt e requisito refinado antes de salvar.
      */
+    @Transactional(readOnly = true)
     public RequirementDTO refineRequirement(String rawRequirement, @NonNull UUID requirementSetId) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
 
-        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName());
+        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName(), requirementSet.getDescription());
 
         LocalDateTime now = LocalDateTime.now();
         return new RequirementDTO(
                 null,
                 "REQ-TEMP",
+                rawRequirement,
                 result.refinedRequirementText(),
                 result.analise(),
-                result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL,
+                result.ambiguityWarnings(),
                 now,
                 now,
                 requirementSet.getId(),
@@ -108,10 +91,10 @@ public class RequirementService {
         );
     }
 
-    private record AiRefinementResult(String analise, String refinedRequirementText, boolean hasConflict) {}
+    private record AiRefinementResult(String analise, String refinedRequirementText, List<String> ambiguityWarnings) {}
 
-    private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName) {
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId, requirementSetName);
+    private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName, String requirementSetDescription) {
+        String relevantContext = findRelevantContext(rawRequirement, requirementSetId, requirementSetName, requirementSetDescription);
 
         String aiResponse = null;
         int retryCount = 0;
@@ -147,7 +130,7 @@ public class RequirementService {
 
         String analise = isPartialProcessing ? null : extractAnalise(aiResponse);
         String refinedRequirementText = isPartialProcessing ? null : extractRefinedRequirement(aiResponse);
-        boolean hasConflict = isPartialProcessing ? false : hasConflictDetected(aiResponse);
+        List<String> ambiguityWarnings = isPartialProcessing ? List.of() : extractAmbiguityWarnings(aiResponse);
 
         if (refinedRequirementText == null || refinedRequirementText.trim().isEmpty() || refinedRequirementText.length() < 20) {
             if (isAiResponseValid) {
@@ -166,19 +149,82 @@ public class RequirementService {
             }
         }
 
-        return new AiRefinementResult(analise, refinedRequirementText, hasConflict);
+        List<String> sanitizedWarnings = new ArrayList<>();
+        for (String w : ambiguityWarnings != null ? ambiguityWarnings : List.<String>of()) {
+            String sanitized = sanitizePlainText(w);
+            if (sanitized != null && !sanitized.isBlank()) {
+                sanitizedWarnings.add(sanitized);
+            }
+        }
+        return new AiRefinementResult(
+                sanitizePlainText(analise),
+                sanitizePlainText(refinedRequirementText),
+                sanitizedWarnings
+        );
     }
 
+    private String sanitizePlainText(String text) {
+        if (text == null || text.isBlank()) return text;
+        return text
+                .replaceAll("\\*+", "")
+                .replaceAll("#+", "")
+                .replaceAll("\\s{2,}", " ")
+                .trim();
+    }
+
+    /**
+     * Salva o requisito no banco após o usuário editar e escolher a versão.
+     * Não salva automaticamente - chamado apenas quando o usuário confirma.
+     */
     @Transactional
-    public RequirementDTO processAndSaveRequirementAsDTO(String rawRequirement, @NonNull UUID requirementSetId) {
-        Requirement requirement = processAndSaveRequirement(rawRequirement, requirementSetId);
+    public RequirementDTO saveRequirement(@NonNull SaveRequirementRequest request) {
+        RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(request.getRequirementSetId()))
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + request.getRequirementSetId()));
+
+        String requirementId = generateNextRequirementId(request.getRequirementSetId());
+        String finalText = request.isUseRefinedVersion() ? request.getRefinedRequirement() : request.getRawRequirement();
+
+        String analise = request.getAnalise();
+        List<String> ambiguityWarnings = request.getAmbiguityWarnings();
+        if ((analise == null || analise.isBlank()) || (ambiguityWarnings == null || ambiguityWarnings.isEmpty())) {
+            AiRefinementResult analysis = processWithAI(request.getRawRequirement(), request.getRequirementSetId().toString(), requirementSet.getName(), requirementSet.getDescription());
+            if (analise == null || analise.isBlank()) analise = analysis.analise();
+            if (ambiguityWarnings == null || ambiguityWarnings.isEmpty()) ambiguityWarnings = analysis.ambiguityWarnings();
+        }
+
+        Requirement requirement = new Requirement();
+        requirement.setRequirementId(requirementId);
+        requirement.setRawRequirement(request.getRawRequirement());
+        requirement.setRefinedRequirement(finalText);
+        requirement.setAnalise(analise);
+        requirement.setAmbiguityWarnings(ambiguityWarnings);
+        requirement.setRequirementSet(requirementSet);
+
+        requirement = requirementRepository.save(requirement);
+
+        requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
+
+        addToEmbeddingStore(requirement);
+
         return convertToDTO(requirement);
+    }
+
+    private void addToEmbeddingStore(Requirement requirement) {
+        String text = requirement.getRequirementId() + ": " + requirement.getRefinedRequirement();
+        Metadata meta = Metadata.from(
+                java.util.Map.of(
+                        "project_id", requirement.getRequirementSet().getId().toString(),
+                        "requirement_uuid", requirement.getUuid().toString()
+                ));
+        TextSegment segment = TextSegment.from(text, meta);
+        Embedding embedding = embeddingModel.embed(segment).content();
+        embeddingStore.add(embedding, segment);
     }
 
     @Transactional(readOnly = true)
     public RequirementDTO getRequirementById(@NonNull UUID id) {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(id))
-                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Requirement", id));
         return convertToDTO(requirement);
     }
 
@@ -189,16 +235,14 @@ public class RequirementService {
     }
 
     @Transactional(readOnly = true)
-    public List<RequirementDTO> getAllRequirements(UUID requirementSetId, String status) {
+    public List<RequirementDTO> getAllRequirements(UUID requirementSetId) {
         List<Requirement> requirements;
         if (requirementSetId != null) {
             requirements = requirementRepository.findByRequirementSet_Id(requirementSetId);
         } else {
             requirements = requirementRepository.findAll();
         }
-        
         return requirements.stream()
-                .filter(req -> status == null || status.isEmpty() || status.equals(req.getStatus()))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -209,45 +253,19 @@ public class RequirementService {
     }
 
     @Transactional
-    public void approveRequirement(@NonNull UUID requirementUuid) {
-        Requirement req = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
-                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
-
-        if (STATUS_CONFLICT.equals(req.getStatus())) {
-            throw new IllegalStateException("Não é possível aprovar um requisito com status CONFLICT. Resolva o conflito primeiro.");
-        }
-
-        req.setStatus("APPROVED");
-        requirementRepository.save(req);
-
-        TextSegment segment = TextSegment.from(
-                req.getRequirementId() + ": " + req.getRefinedRequirement(),
-                metadata("project_id", req.getRequirementSet().getId().toString())
-        );
-
-        Embedding embedding = embeddingModel.embed(segment).content();
-        embeddingStore.add(embedding, segment);
-    }
-
-    @Transactional
-    public RequirementDTO updatePendingRequirement(@NonNull UUID requirementUuid, String rawRequirement) {
+    public RequirementDTO updateRequirement(@NonNull UUID requirementUuid, String rawRequirement, String refinedRequirement, boolean useRefinedVersion) {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
-                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
+                .orElseThrow(() -> new ResourceNotFoundException("Requirement", requirementUuid));
 
-        if (!STATUS_PENDING_APPROVAL.equals(requirement.getStatus()) && !STATUS_CONFLICT.equals(requirement.getStatus())) {
-            throw new IllegalStateException("Apenas requisitos com status PENDING_APPROVAL ou CONFLICT podem ser atualizados");
-        }
-
-        UUID requirementSetId = requirement.getRequirementSet().getId();
-        String requirementSetName = requirement.getRequirementSet().getName();
-        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSetName);
-
-        requirement.setRefinedRequirement(result.refinedRequirementText());
-        requirement.setAnalise(result.analise());
-        requirement.setStatus(result.hasConflict() ? STATUS_CONFLICT : STATUS_PENDING_APPROVAL);
+        requirement.setRawRequirement(rawRequirement);
+        String finalText = useRefinedVersion ? refinedRequirement : rawRequirement;
+        requirement.setRefinedRequirement(finalText);
 
         requirement = requirementRepository.save(requirement);
         requirementHistoryRepository.save(new RequirementHistory(requirement, "UPDATED"));
+
+        // Re-adiciona ao embedding store com texto atualizado (requisitos antigos podem ter versão desatualizada)
+        addToEmbeddingStore(requirement);
 
         return convertToDTO(requirement);
     }
@@ -255,7 +273,7 @@ public class RequirementService {
     @Transactional
     public void deleteRequirement(@NonNull UUID requirementUuid) {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
-                .orElseThrow(() -> new RuntimeException("Requirement não encontrado com ID: " + requirementUuid));
+                .orElseThrow(() -> new ResourceNotFoundException("Requirement", requirementUuid));
 
         requirementHistoryRepository.deleteAll(
             requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(requirementUuid)
@@ -269,9 +287,10 @@ public class RequirementService {
         return new RequirementDTO(
                 requirement.getUuid(),
                 requirement.getRequirementId(),
+                requirement.getRawRequirement(),
                 requirement.getRefinedRequirement(),
                 requirement.getAnalise(),
-                requirement.getStatus(),
+                requirement.getAmbiguityWarnings(),
                 requirement.getCreatedAt(),
                 requirement.getUpdatedAt(),
                 requirementSet != null ? requirementSet.getId() : null,
@@ -279,13 +298,17 @@ public class RequirementService {
         );
     }
 
-    private String findRelevantContext(String userQuery, String projectId, String requirementSetName) {
+    private String findRelevantContext(String userQuery, String projectId, String requirementSetName, String requirementSetDescription) {
         Embedding queryEmbedding = embeddingModel.embed(userQuery).content();
 
         StringBuilder contextBuilder = new StringBuilder();
-        
         if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
-            contextBuilder.append("PROJETO/CONJUNTO DE REQUISITOS: ").append(requirementSetName).append("\n\n");
+            contextBuilder.append("PROJETO/CONJUNTO DE REQUISITOS: ").append(requirementSetName).append("\n");
+        }
+        if (requirementSetDescription != null && !requirementSetDescription.trim().isEmpty()) {
+            contextBuilder.append("DESCRIÇÃO DO PROJETO: ").append(requirementSetDescription).append("\n\n");
+        } else if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
+            contextBuilder.append("\n");
         }
 
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
@@ -298,9 +321,8 @@ public class RequirementService {
         EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
 
         if (!result.matches().isEmpty()) {
-            contextBuilder.append("REQUISITOS JÁ APROVADOS NESTE PROJETO:\n");
+            contextBuilder.append("REQUISITOS SALVOS NESTE PROJETO:\n");
             int usedLength = contextBuilder.length();
-            
             for (var match : result.matches()) {
                 String text = match.embedded().text();
                 if (usedLength + text.length() + 5 > maxContextLength) {
@@ -323,7 +345,6 @@ public class RequirementService {
         return contextBuilder.toString();
     }
 
-
     private String generateNextRequirementId(@NonNull UUID requirementSetId) {
         List<Requirement> existing = requirementRepository.findByRequirementSet_Id(Objects.requireNonNull(requirementSetId));
         int maxNum = 0;
@@ -343,14 +364,11 @@ public class RequirementService {
     }
 
     private String extractAnalise(String aiResponse) {
-        if (aiResponse == null || aiResponse.trim().isEmpty()) {
-            return null;
-        }
-        if (aiResponse.length() < 50) {
+        if (aiResponse == null || aiResponse.trim().isEmpty() || aiResponse.length() < 50) {
             return null;
         }
         Pattern pattern1 = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Análise\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Requisito Refinado|Status|Estimativa)|$)",
+                "(?i)(?:\\*\\*|##)?\\s*Análise\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Requisito Refinado|Pontos de Ambiguidade|Status|Estimativa)|$)",
                 Pattern.DOTALL);
         Matcher matcher1 = pattern1.matcher(aiResponse);
         if (matcher1.find()) {
@@ -363,10 +381,11 @@ public class RequirementService {
         if (index >= 0) {
             String after = aiResponse.substring(index + 7).trim();
             int next = Math.min(
-                after.toLowerCase().indexOf("requisito refinado"),
-                after.toLowerCase().indexOf("estimativa")
+                Math.min(after.toLowerCase().indexOf("requisito refinado") > 0 ? after.toLowerCase().indexOf("requisito refinado") : Integer.MAX_VALUE,
+                        after.toLowerCase().indexOf("pontos de ambiguidade") > 0 ? after.toLowerCase().indexOf("pontos de ambiguidade") : Integer.MAX_VALUE),
+                after.toLowerCase().indexOf("estimativa") > 0 ? after.toLowerCase().indexOf("estimativa") : Integer.MAX_VALUE
             );
-            if (next > 0) {
+            if (next > 0 && next < Integer.MAX_VALUE) {
                 String result = after.substring(0, next).trim();
                 if (result.length() >= 30 && !result.matches("^\\d+$")) {
                     return result;
@@ -377,15 +396,11 @@ public class RequirementService {
     }
 
     private String extractRefinedRequirement(String aiResponse) {
-        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+        if (aiResponse == null || aiResponse.trim().isEmpty() || aiResponse.length() < 50) {
             return null;
         }
-        if (aiResponse.length() < 50) {
-            return null;
-        }
-        
         Pattern pattern1 = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*Estimativa de Pontos|$)",
+                "(?i)(?:\\*\\*|##)?\\s*Requisito Refinado\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Pontos de Ambiguidade|Estimativa de Pontos)|$)",
                 Pattern.DOTALL);
         Matcher matcher1 = pattern1.matcher(aiResponse);
         if (matcher1.find()) {
@@ -394,24 +409,19 @@ public class RequirementService {
                 return result;
             }
         }
-        
         int index = aiResponse.toLowerCase().indexOf("requisito refinado");
         if (index >= 0) {
-            String after = aiResponse.substring(index + "requisito refinado".length())
-                .replaceFirst("^\\s*:?\\*\\*?\\s*", "");
-            
+            String after = aiResponse.substring(index + "requisito refinado".length()).replaceFirst("^\\s*:?\\*\\*?\\s*", "");
+            int nextPts = after.toLowerCase().indexOf("pontos de ambiguidade");
             int nextEstimativa = after.toLowerCase().indexOf("estimativa de pontos");
-            int nextStatus = after.toLowerCase().indexOf("status de validação");
-            
             int next = -1;
-            if (nextEstimativa > 0 && nextStatus > 0) {
-                next = Math.min(nextEstimativa, nextStatus);
+            if (nextPts > 0 && nextEstimativa > 0) {
+                next = Math.min(nextPts, nextEstimativa);
             } else if (nextEstimativa > 0) {
                 next = nextEstimativa;
-            } else if (nextStatus > 0) {
-                next = nextStatus;
+            } else if (nextPts > 0) {
+                next = nextPts;
             }
-            
             if (next > 0) {
                 String result = after.substring(0, next).trim();
                 if (result.length() >= 50 && !result.matches("^\\d+$")) {
@@ -427,21 +437,126 @@ public class RequirementService {
         return null;
     }
 
-    private boolean hasConflictDetected(String aiResponse) {
+    private List<String> extractAmbiguityWarnings(String aiResponse) {
         if (aiResponse == null || aiResponse.trim().isEmpty()) {
-            return false;
+            return List.of();
         }
-        
+        List<String> warnings = new ArrayList<>();
         Pattern pattern = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Status de Validação\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Análise|Requisito Refinado|$))",
+                "(?i)(?:\\*\\*|##)?\\s*Pontos de Ambiguidade\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Análise|Requisito Refinado|Estimativa|$))",
                 Pattern.DOTALL);
         Matcher matcher = pattern.matcher(aiResponse);
         if (matcher.find()) {
-            String status = matcher.group(1).trim();
-            return status.toUpperCase().contains("CONFLITO") || status.toUpperCase().contains("CONFLICT");
+            String section = matcher.group(1).trim();
+            if (section.equalsIgnoreCase("Nenhum") || section.equalsIgnoreCase("nenhum.")) {
+                return List.of();
+            }
+            String[] parts = section.split("(?=\\s*-\\s*|\\d+\\.\\s*|→\\s*Sugestão)");
+            for (String part : parts) {
+                String trimmed = part.trim();
+                if (trimmed.length() > 10) {
+                    warnings.add(trimmed);
+                }
+            }
+            if (warnings.isEmpty() && section.length() > 15) {
+                warnings.add(section);
+            }
         }
-        
-        return aiResponse.toUpperCase().contains("CONFLITO DETECTADO") || 
-               aiResponse.toUpperCase().contains("CONFLICT DETECTED");
+        return warnings;
+    }
+
+    /**
+     * Relatório geral: requisitos com problemas, conflitos e sugestões de resolução.
+     */
+    @Transactional(readOnly = true)
+    public RequirementReportDTO getGeneralReport(@NonNull UUID requirementSetId) {
+        RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
+
+        List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(requirementSetId);
+        List<RequirementReportDTO.RequirementReportItemDTO> itemsWithProblems = new ArrayList<>();
+
+        double similarityThreshold = 0.85;
+
+        for (Requirement req : requirements) {
+            String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
+            Embedding queryEmbedding = embeddingModel.embed(queryText).content();
+
+            EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
+                    .queryEmbedding(queryEmbedding)
+                    .maxResults(20)
+                    .minScore(similarityThreshold)
+                    .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(requirementSetId.toString()))
+                    .build();
+
+            EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
+
+            List<RequirementReportDTO.ConflictInfo> conflicts = new ArrayList<>();
+            for (var match : result.matches()) {
+                String matchedUuid = match.embedded().metadata().getString("requirement_uuid");
+                if (matchedUuid != null && matchedUuid.equals(req.getUuid().toString())) {
+                    continue;
+                }
+                if (queryText.equals(match.embedded().text())) {
+                    continue;
+                }
+                String matchedText = match.embedded().text();
+                double score = match.score();
+                Requirement conflicting = findRequirementByText(requirements, matchedText);
+                String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
+                if (conflicting != null) {
+                    conflicts.add(new RequirementReportDTO.ConflictInfo(
+                            conflicting.getUuid(),
+                            conflicting.getRequirementId(),
+                            conflicting.getRefinedRequirement(),
+                            score,
+                            suggestion
+                    ));
+                }
+            }
+
+            boolean hasConflicts = !conflicts.isEmpty();
+            boolean hasAmbiguity = req.getAmbiguityWarnings() != null && !req.getAmbiguityWarnings().isEmpty();
+
+            if (hasConflicts || hasAmbiguity) {
+                List<String> problems = new ArrayList<>();
+                List<String> resolutions = new ArrayList<>();
+                if (hasConflicts) {
+                    problems.add("Possível duplicata ou conflito com " + conflicts.size() + " requisito(s) similar(es)");
+                    resolutions.add("Revise os requisitos listados e decida se devem ser consolidados.");
+                    resolutions.add("Se forem duplicatas, mantenha apenas um e remova os demais.");
+                    resolutions.add("Se forem complementares, reescreva para deixar clara a diferença.");
+                }
+                if (hasAmbiguity) {
+                    problems.add("Ambiguidade identificada pela IA: " + req.getAmbiguityWarnings().size() + " ponto(s)");
+                    resolutions.add("Revise os pontos de ambiguidade e implemente as sugestões indicadas.");
+                    resolutions.add("Reescreva o requisito para deixar cada ponto mais claro e específico.");
+                }
+                itemsWithProblems.add(new RequirementReportDTO.RequirementReportItemDTO(
+                        req.getUuid(),
+                        req.getRequirementId(),
+                        req.getRefinedRequirement(),
+                        problems,
+                        conflicts,
+                        resolutions,
+                        hasAmbiguity ? req.getAmbiguityWarnings() : null
+                ));
+            }
+        }
+
+        return new RequirementReportDTO(requirementSetId, requirementSet.getName(), itemsWithProblems);
+    }
+
+    private Requirement findRequirementByText(List<Requirement> requirements, String text) {
+        if (text == null || text.length() < 10) return null;
+        int colonIdx = text.indexOf(':');
+        if (colonIdx <= 0) return null;
+        String reqId = text.substring(0, colonIdx).trim();
+        for (Requirement r : requirements) {
+            if (reqId.equals(r.getRequirementId())) {
+                return r;
+            }
+        }
+        return null;
     }
 }

@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.dto.ChatbotConfigDTO;
 import requirementsAssistantAI.dto.CreateChatbotConfigRequest;
 
@@ -39,7 +40,7 @@ public class ChatbotConfigService {
 
         RequirementSet requirementSet = requirementSetRepository.findById(
                 Objects.requireNonNull(request.getRequirementSetId()))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado com ID: " + request.getRequirementSetId()));
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", request.getRequirementSetId()));
 
         ChatbotConfig config = new ChatbotConfig(
                 requirementSet,

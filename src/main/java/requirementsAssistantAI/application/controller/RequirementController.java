@@ -15,6 +15,8 @@ import requirementsAssistantAI.application.service.RequirementService;
 import requirementsAssistantAI.dto.CreateRequirementRequest;
 import requirementsAssistantAI.dto.RefineRequirementRequest;
 import requirementsAssistantAI.dto.RequirementDTO;
+import requirementsAssistantAI.dto.RequirementReportDTO;
+import requirementsAssistantAI.dto.SaveRequirementRequest;
 import requirementsAssistantAI.dto.UpdateRequirementRequest;
 
 @RestController
@@ -27,17 +29,11 @@ public class RequirementController {
         this.requirementService = requirementService;
     }
 
+    /**
+     * Refina requisição com IA sem salvar. Usuário edita e escolhe versão antes de salvar.
+     */
     @PostMapping
-    public ResponseEntity<RequirementDTO> processAndSaveRequirement(@Valid @RequestBody CreateRequirementRequest request) {
-        RequirementDTO dto = requirementService.processAndSaveRequirementAsDTO(
-                request.getRequirement(),
-                Objects.requireNonNull(request.getRequirementSetId())
-        );
-        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
-    }
-
-    @PostMapping("/refine")
-    public ResponseEntity<RequirementDTO> refineRequirement(@Valid @RequestBody RefineRequirementRequest request) {
+    public ResponseEntity<RequirementDTO> refineRequirement(@Valid @RequestBody CreateRequirementRequest request) {
         RequirementDTO dto = requirementService.refineRequirement(
                 request.getRequirement(),
                 Objects.requireNonNull(request.getRequirementSetId())
@@ -45,12 +41,33 @@ public class RequirementController {
         return ResponseEntity.ok(dto);
     }
 
+    @PostMapping("/refine")
+    public ResponseEntity<RequirementDTO> refine(@Valid @RequestBody RefineRequirementRequest request) {
+        RequirementDTO dto = requirementService.refineRequirement(
+                request.getRequirement(),
+                Objects.requireNonNull(request.getRequirementSetId())
+        );
+        return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/save")
+    public ResponseEntity<RequirementDTO> saveRequirement(@Valid @RequestBody SaveRequirementRequest request) {
+        RequirementDTO dto = requirementService.saveRequirement(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
     @GetMapping
     public ResponseEntity<List<RequirementDTO>> getAllRequirements(
-            @RequestParam(required = false) UUID requirementSetId,
-            @RequestParam(required = false) String status) {
-        List<RequirementDTO> requirements = requirementService.getAllRequirements(requirementSetId, status);
+            @RequestParam(required = false) UUID requirementSetId) {
+        List<RequirementDTO> requirements = requirementService.getAllRequirements(requirementSetId);
         return ResponseEntity.ok(requirements);
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<RequirementReportDTO> getGeneralReport(
+            @RequestParam @NonNull UUID requirementSetId) {
+        RequirementReportDTO report = requirementService.getGeneralReport(Objects.requireNonNull(requirementSetId));
+        return ResponseEntity.ok(report);
     }
 
     @GetMapping("/{id}")
@@ -71,19 +88,15 @@ public class RequirementController {
         return ResponseEntity.ok(history);
     }
 
-    @PostMapping("/{id}/approve")
-    public ResponseEntity<Void> approve(@PathVariable @NonNull UUID id) {
-        requirementService.approveRequirement(Objects.requireNonNull(id));
-        return ResponseEntity.ok().build();
-    }
-
     @PutMapping("/{id}")
-    public ResponseEntity<RequirementDTO> updatePendingRequirement(
+    public ResponseEntity<RequirementDTO> updateRequirement(
             @PathVariable @NonNull UUID id,
             @Valid @RequestBody UpdateRequirementRequest request) {
-        RequirementDTO dto = requirementService.updatePendingRequirement(
+        RequirementDTO dto = requirementService.updateRequirement(
                 Objects.requireNonNull(id),
-                request.getRequirement()
+                request.getRawRequirement(),
+                request.getRefinedRequirement(),
+                request.isUseRefinedVersion()
         );
         return ResponseEntity.ok(dto);
     }

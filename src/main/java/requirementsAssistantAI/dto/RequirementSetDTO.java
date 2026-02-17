@@ -12,6 +12,7 @@ import java.util.UUID;
 public class RequirementSetDTO {
     private UUID id;
     private String name;
+    private String description;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer requirementsCount;
@@ -19,9 +20,10 @@ public class RequirementSetDTO {
     public RequirementSetDTO() {
     }
 
-    public RequirementSetDTO(UUID id, String name, LocalDateTime createdAt, LocalDateTime updatedAt, Integer requirementsCount) {
+    public RequirementSetDTO(UUID id, String name, String description, LocalDateTime createdAt, LocalDateTime updatedAt, Integer requirementsCount) {
         this.id = id;
         this.name = name;
+        this.description = description;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.requirementsCount = requirementsCount;

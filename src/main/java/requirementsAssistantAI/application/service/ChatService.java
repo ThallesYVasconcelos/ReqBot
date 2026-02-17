@@ -105,14 +105,12 @@ public class ChatService {
     }
 
     private String findRelevantContext(String userQuestion, String projectId) {
-        List<Requirement> approvedRequirements = requirementRepository.findByRequirementSet_Id(
+        List<Requirement> savedRequirements = requirementRepository.findByRequirementSet_Id(
                 UUID.fromString(projectId)
-        ).stream()
-                .filter(req -> "APPROVED".equals(req.getStatus()))
-                .collect(Collectors.toList());
+        );
 
-        if (approvedRequirements.isEmpty()) {
-            return "Nenhum requisito aprovado encontrado para este projeto.";
+        if (savedRequirements.isEmpty()) {
+            return "Nenhum requisito salvo encontrado para este projeto.";
         }
 
         Embedding queryEmbedding = embeddingModel.embed(userQuestion).content();
@@ -126,8 +124,8 @@ public class ChatService {
         EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
 
         if (result.matches().isEmpty()) {
-            int limit = Math.min(approvedRequirements.size(), maxRagResults);
-            return approvedRequirements.stream()
+            int limit = Math.min(savedRequirements.size(), maxRagResults);
+            return savedRequirements.stream()
                     .limit(limit)
                     .map(req -> req.getRequirementId() + ": " + req.getRefinedRequirement())
                     .collect(Collectors.joining("\n---\n"));

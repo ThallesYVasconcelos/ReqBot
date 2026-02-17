@@ -1,5 +1,6 @@
 package requirementsAssistantAI.application.service;
 
+import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.domain.Requirement;
 import requirementsAssistantAI.domain.RequirementSet;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
@@ -37,12 +38,12 @@ public class RequirementSetService {
     }
 
     @Transactional
-    public RequirementSetDTO createRequirementSet(String name) {
+    public RequirementSetDTO createRequirementSet(String name,String description) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("O nome do RequirementSet não pode ser vazio");
         }
 
-        RequirementSet requirementSet = new RequirementSet(name.trim());
+        RequirementSet requirementSet = new RequirementSet(name.trim(),description);
         requirementSet = requirementSetRepository.save(requirementSet);
         return convertToDTO(requirementSet);
     }
@@ -57,19 +58,17 @@ public class RequirementSetService {
     @Transactional(readOnly = true)
     public RequirementSetDTO getRequirementSetById(@NonNull UUID id) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(id))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado com ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", id));
         return convertToDTO(requirementSet);
     }
 
     @Transactional
     public void deleteRequirementSet(@NonNull UUID id) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(id))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado com ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", id));
 
-        // Remove configurações do chatbot que referenciam este projeto (ativas ou inativas)
         chatbotConfigRepository.findByRequirementSet_Id(id).forEach(chatbotConfigRepository::delete);
 
-        // Deleta os RequirementHistory antes de deletar os Requirements
         List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(id);
         for (Requirement requirement : requirements) {
             requirementHistoryRepository.deleteAll(
@@ -83,7 +82,7 @@ public class RequirementSetService {
     @Transactional(readOnly = true)
     public List<RequirementSummaryDTO> getRequirementsBySetId(@NonNull UUID requirementSetId) {
         requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
-                .orElseThrow(() -> new RuntimeException("RequirementSet não encontrado com ID: " + requirementSetId));
+                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", requirementSetId));
 
         return requirementRepository.findByRequirementSet_Id(requirementSetId).stream()
                 .map(this::convertToSummaryDTO)
@@ -97,6 +96,7 @@ public class RequirementSetService {
         return new RequirementSetDTO(
                 requirementSet.getId(),
                 requirementSet.getName(),
+                requirementSet.getDescription(),
                 requirementSet.getCreatedAt(),
                 requirementSet.getUpdatedAt(),
                 requirementsCount
@@ -108,8 +108,7 @@ public class RequirementSetService {
                 requirement.getUuid(),
                 requirement.getRequirementId(),
                 requirement.getRefinedRequirement(),
-                null,
-                requirement.getStatus(),
+                requirement.getAnalise(),
                 requirement.getCreatedAt(),
                 requirement.getUpdatedAt()
         );

@@ -36,6 +36,7 @@ public class AssistantConfig {
                 .apiKey(geminiApiKey)
                 .modelName(geminiModel)
                 .temperature(0.3)
+                .maxOutputTokens(8192)
                 .build();
     }
 
