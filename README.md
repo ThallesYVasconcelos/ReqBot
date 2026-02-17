@@ -1,109 +1,148 @@
 # Requirements Assistant AI
 
-API para gerenciamento e refinamento de requisitos de software com IA (Gemini), chatbot RAG educacional e login via Google.
+API para gerenciamento e refinamento de requisitos de software com IA (Gemini), chatbot RAG educacional e autenticação via Google OAuth.
+
+## Tecnologias
+
+- **Java 17** · Spring Boot 4 · Spring Security
+- **PostgreSQL** · PGVector (embeddings)
+- **Gemini AI** · LangChain4j
+- **Google OAuth** · JWT
 
 ## Pré-requisitos
 
 - Java 17+
-- Docker (PostgreSQL + PGVector)
-- API key do Google Gemini AI
+- Maven 3.8+
+- Docker e Docker Compose
+- API key do [Google Gemini AI](https://aistudio.google.com/apikey)
+- Credenciais Google OAuth (para login)
 
-## Execução rápida
+## Execução
 
-### Opção 1: Docker Compose (Recomendado)
+### Docker (recomendado)
 
 ```bash
-# 1. Subir banco de dados e aplicação
-docker-compose up -d
+# Subir banco e aplicação
+docker compose -f docker/docker-compose.yml up -d
 
-# 2. Configurar variáveis de ambiente no docker-compose.yml
-# Edite as variáveis GEMINI_API_KEY, AUTH_JWT_SECRET, etc.
+# Apenas o banco (para desenvolvimento local)
+docker compose -f docker/docker-compose.yml up -d postgres
 ```
 
-### Opção 2: Desenvolvimento Local
+**Portas:** API em `http://localhost:8080` · PostgreSQL em `localhost:5433`
+
+### Desenvolvimento local
 
 ```bash
-# 1. Subir apenas o banco de dados
-docker-compose up -d postgres
+# 1. Subir o banco
+docker compose -f docker/docker-compose.yml up -d postgres
 
-# 2. Configurar variáveis (copiar example e preencher)
+# 2. Configurar (copiar e editar)
 cp application.properties.example application.properties
-# Editar application.properties com suas chaves e senhas
 
 # 3. Rodar a aplicação
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
 
-A API estará em `http://localhost:8080`.
+**Porta local:** `http://localhost:8081` (configurada em `application.properties`)
 
-**Nota**: Para mais detalhes sobre Docker, consulte [README_DOCKER.md](README_DOCKER.md).
+## Documentação da API
 
-## Documentação Swagger
+- **Swagger UI:** `http://localhost:8080/swagger-ui.html` (ou 8081 em dev local)
+- **OpenAPI:** `http://localhost:8080/v3/api-docs`
 
-Após iniciar a aplicação, acesse:
-- **Swagger UI**: `http://localhost:8080/swagger-ui.html`
-- **OpenAPI JSON**: `http://localhost:8080/v3/api-docs`
-
-## Configuração (application.properties)
+## Configuração
 
 | Propriedade | Obrigatória | Descrição |
-|-------------|-------------|-----------|
-| `gemini.api-key` | Sim | API key do Google Gemini AI |
-| `gemini.model` | Não | Modelo Gemini (padrão: gemini-2.5-flash) |
+|-------------|:-----------:|-----------|
+| `gemini.api-key` | Sim | API key do Google Gemini |
+| `gemini.model` | Não | Modelo (padrão: gemini-2.5-flash) |
 | `spring.datasource.url` | Sim | URL do PostgreSQL |
 | `spring.datasource.username` | Sim | Usuário do banco |
 | `spring.datasource.password` | Sim | Senha do banco |
-| `auth.jwt.secret` | Sim | Segredo para JWT (mín. 32 caracteres) |
+| `auth.jwt.secret` | Sim | Segredo JWT (mín. 32 caracteres) |
 | `auth.admin.emails` | Não | Emails de admin (separados por vírgula) |
-| `auth.google.client-id` | Opcional | Client ID do Google OAuth |
+| `auth.google.client-id` | Não | Client ID do Google OAuth |
 
 ## Autenticação
 
-### Login via Google OAuth
-- `POST /api/auth/user/google` – Login como usuário
-- `POST /api/auth/admin/google` – Login como admin
+### Google OAuth
 
-### Tokens de Teste (Desenvolvimento)
-Para facilitar testes locais, use:
-- **Token**: `test-admin` → Autentica como admin
-- **Token**: `id-user` → Autentica como usuário normal
+- `POST /api/auth/user/google` — Login como usuário
+- `POST /api/auth/admin/google` — Login como admin
 
-Envie o token no campo `idToken` do body da requisição.
+Envie o `idToken` do Google no body da requisição.
 
-## Papéis (Admin e User)
+### Tokens de teste (desenvolvimento)
 
-- **Admin** – Gerencia requirements, requirement-sets, assistente e chatbot. Pode aprovar requisitos e configurar o chatbot.
-- **User** – Acessa chatbot dentro do horário configurado. O chatbot é educacional e não fornece código ou implementações prontas.
+- `test-admin` — Autentica como admin
+- `id-user` — Autentica como usuário
 
-Emails de admin são definidos em `auth.admin.emails` (separados por vírgula).
+## Papéis
+
+| Papel | Permissões |
+|-------|------------|
+| **Admin** | Projetos, requisitos, refinamento com IA, chatbot, relatórios |
+| **User** | Chatbot (dentro do horário configurado) |
 
 ## Endpoints principais
 
 ### Autenticação
-- `POST /api/auth/user/google` – Login user
-- `POST /api/auth/admin/google` – Login admin
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/auth/user/google` | Login usuário |
+| POST | `/api/auth/admin/google` | Login admin |
 
-### Requisitos (Admin)
-- `POST /api/requirement-sets` – Criar projeto
-- `POST /api/requirements` – Processar requisito com IA
-- `GET /api/requirements` – Listar requisitos
-- `PUT /api/requirements/{id}` – Atualizar requisito pendente
-- `POST /api/requirements/{id}/approve` – Aprovar e salvar no RAG
-- `DELETE /api/requirements/{id}` – Deletar requisito
+### Projetos (Requirement Sets)
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/requirement-sets` | Criar projeto (nome + descrição) |
+| GET | `/api/requirement-sets` | Listar projetos |
+| GET | `/api/requirement-sets/{id}` | Obter projeto |
+| DELETE | `/api/requirement-sets/{id}` | Excluir projeto |
+| GET | `/api/requirement-sets/{id}/requirements` | Listar requisitos do projeto |
 
-### Chatbot (User/Admin)
-- `POST /api/admin/chatbot/config` – Configurar chatbot (admin)
-- `POST /api/chatbot/ask` – Perguntar ao chatbot (user/admin)
+### Requisitos
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/requirements` | Refinar requisito com IA |
+| POST | `/api/requirements/refine` | Refinar (alternativo) |
+| POST | `/api/requirements/save` | Salvar requisito refinado |
+| GET | `/api/requirements` | Listar (filtro por projeto) |
+| GET | `/api/requirements/{id}` | Obter requisito |
+| GET | `/api/requirements/set/{id}` | Requisitos por projeto |
+| GET | `/api/requirements/report` | Relatório de conflitos/ambiguidades |
+| GET | `/api/requirements/{id}/history` | Histórico de alterações |
+| PUT | `/api/requirements/{id}` | Atualizar requisito |
+| DELETE | `/api/requirements/{id}` | Excluir requisito |
 
-**Nota**: O chatbot é educacional e orienta os alunos sobre requisitos, mas **não fornece código, schemas SQL ou implementações prontas**. O objetivo é que os alunos aprendam criando suas próprias soluções.
+### Chatbot
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/admin/chatbot/config` | Configurar chatbot (admin) |
+| GET | `/api/admin/chatbot/config` | Listar configurações |
+| POST | `/api/chatbot/ask` | Perguntar ao chatbot |
 
 ## Funcionalidades
 
-- **Refinamento de Requisitos com IA**: Processa requisitos brutos usando Gemini AI, seguindo padrão INVEST
-- **Detecção de Conflitos**: Identifica requisitos duplicados ou similares
-- **Chatbot RAG Educacional**: Responde perguntas sobre requisitos aprovados usando RAG (sem fornecer código)
-- **Análise e Classificação de Requisitos**: Classifica requisitos em FR, Security NFR ou Reliability NFR usando few-shot learning
-- **Gerenciamento de Projetos**: Organiza requisitos em requirement-sets
-- **Histórico de Requisitos**: Mantém histórico de todas as alterações
+- **Refinamento com IA** — Processa requisitos brutos com Gemini, seguindo padrão INVEST e classificação PURE (FR, NFR-Security, NFR-Reliability)
+- **Pontos de ambiguidade** — Identifica trechos obscuros e sugere melhorias
+- **Detecção de conflitos** — Encontra requisitos duplicados ou similares via embeddings
+- **Chatbot RAG** — Responde perguntas sobre requisitos salvos (educacional, sem fornecer código)
+- **Projetos** — Organiza requisitos em conjuntos com nome e descrição
+- **Histórico** — Registra alterações de cada requisito
 
+## Estrutura do projeto
 
+```
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── src/main/java/requirementsAssistantAI/
+│   ├── application/     # Controllers, services, ports
+│   ├── domain/          # Entidades
+│   ├── dto/             # DTOs
+│   └── infrastructure/  # Repositories, config
+├── pom.xml
+└── application.properties.example
+```

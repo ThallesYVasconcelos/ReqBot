@@ -33,9 +33,7 @@ logs/
 Thumbs.db
 
 # Docker
-Dockerfile
-.dockerignore
-docker-compose.yml
+docker/
 
 # Documentation
 *.md

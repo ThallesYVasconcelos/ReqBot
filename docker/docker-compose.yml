@@ -18,8 +18,8 @@ services:
 
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: requirements-app
     ports:
       - "8080:8080"

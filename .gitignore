@@ -56,7 +56,6 @@ src/main/resources/application.properties
 # Variáveis de ambiente
 .env
 .env.*
-!.env.example
 
 # Chaves, certificados e secrets
 *.pem
