@@ -132,6 +132,12 @@ Envie o `idToken` do Google no body da requisição.
 - **Projetos** — Organiza requisitos em conjuntos com nome e descrição
 - **Histórico** — Registra alterações de cada requisito
 
+## Deploy (Cloud Run)
+
+Para deploy automático no Google Cloud Run, consulte [docs/DEPLOY.md](docs/DEPLOY.md).
+
+---
+
 ## Estrutura do projeto
 
 ```
