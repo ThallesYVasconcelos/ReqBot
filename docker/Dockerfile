@@ -8,13 +8,12 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 
-FROM eclipse-temurin:17-jre-alpine
+# Debian-based: ONNX Runtime precisa de libstdc++.so.6 (Alpine pode falhar)
+FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-RUN apk add --no-cache libstdc++
-
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN groupadd -r spring && useradd -r -g spring spring
 USER spring:spring
 
 COPY --from=build /app/target/*.jar app.jar
