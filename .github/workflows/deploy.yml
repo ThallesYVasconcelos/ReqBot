@@ -47,7 +47,7 @@ jobs:
           region: ${{ env.REGION }}
           project_id: ${{ env.PROJECT_ID }}
           timeout: 300
-          flags: --cpu-boost
+          flags: --cpu-boost --memory=1Gi
           env_vars: |
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             AUTH_GOOGLE_CLIENT_ID=${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
