@@ -49,7 +49,6 @@ jobs:
           timeout: 300
           flags: --cpu-boost
           env_vars: |
-            PORT=8080
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             AUTH_GOOGLE_CLIENT_ID=${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
             AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET }}
