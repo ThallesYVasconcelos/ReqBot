@@ -184,7 +184,7 @@ public class AuthService {
         if (csv == null || csv.trim().isEmpty()) {
             return Set.of();
         }
-        return Arrays.stream(csv.split(","))
+        return Arrays.stream(csv.split("[,;]"))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .map(String::toLowerCase)
