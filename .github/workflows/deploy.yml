@@ -47,7 +47,7 @@ jobs:
           region: ${{ env.REGION }}
           project_id: ${{ env.PROJECT_ID }}
           timeout: 300
-          flags: --cpu-boost --memory=2Gi --startup-probe=initial_delay_seconds=90,period_seconds=15,failure_threshold=10,httpGet.port=8080
+          flags: --cpu-boost --memory=2Gi --startup-probe=tcpSocket.port=8080,initialDelaySeconds=90,periodSeconds=15,failureThreshold=10
           env_vars: |
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             AUTH_GOOGLE_CLIENT_ID=${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
