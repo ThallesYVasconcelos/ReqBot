@@ -173,10 +173,7 @@ public class RequirementService {
                 .trim();
     }
 
-    /**
-     * Salva o requisito no banco após o usuário editar e escolher a versão.
-     * Não salva automaticamente - chamado apenas quando o usuário confirma.
-     */
+
     @Transactional
     public RequirementDTO saveRequirement(@NonNull SaveRequirementRequest request) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(request.getRequirementSetId()))
@@ -381,13 +378,15 @@ public class RequirementService {
         int index = aiResponse.toLowerCase().indexOf("análise");
         if (index >= 0) {
             String after = aiResponse.substring(index + 7).trim();
-            int next = Math.min(
-                Math.min(after.toLowerCase().indexOf("requisito refinado") > 0 ? after.toLowerCase().indexOf("requisito refinado") : Integer.MAX_VALUE,
-                        after.toLowerCase().indexOf("pontos de ambiguidade") > 0 ? after.toLowerCase().indexOf("pontos de ambiguidade") : Integer.MAX_VALUE),
-                after.toLowerCase().indexOf("estimativa") > 0 ? after.toLowerCase().indexOf("estimativa") : Integer.MAX_VALUE
-            );
+            int idxRefinado = after.toLowerCase().indexOf("requisito refinado");
+            int idxPontos = after.toLowerCase().indexOf("pontos de ambiguidade");
+            int idxEstimativa = after.toLowerCase().indexOf("estimativa");
+            int next = Integer.MAX_VALUE;
+            if (idxRefinado >= 0) next = Math.min(next, idxRefinado);
+            if (idxPontos >= 0) next = Math.min(next, idxPontos);
+            if (idxEstimativa >= 0) next = Math.min(next, idxEstimativa);
             if (next > 0 && next < Integer.MAX_VALUE) {
-                String result = after.substring(0, next).trim();
+                String result = after.substring(0, next).replaceFirst("^\\s*:?\\s*", "").trim();
                 if (result.length() >= 30 && !result.matches("^\\d+$")) {
                     return result;
                 }
@@ -444,31 +443,38 @@ public class RequirementService {
         }
         List<String> warnings = new ArrayList<>();
         Pattern pattern = Pattern.compile(
-                "(?i)(?:\\*\\*|##)?\\s*Pontos de Ambiguidade\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Análise|Requisito Refinado|Estimativa|$))",
+                "(?i)(?:\\*\\*|##)?\\s*Pontos de Ambiguidade\\s*:?\\*\\*?\\s*(.*?)(?=(?:\\*\\*|##)?\\s*(?:Análise|Requisito Refinado|Estimativa de Pontos|Estimativa)|$)",
                 Pattern.DOTALL);
         Matcher matcher = pattern.matcher(aiResponse);
         if (matcher.find()) {
             String section = matcher.group(1).trim();
-            if (section.equalsIgnoreCase("Nenhum") || section.equalsIgnoreCase("nenhum.")) {
+            if (isNenhumAmbiguity(section)) {
                 return List.of();
             }
-            String[] parts = section.split("(?=\\s*-\\s*|\\d+\\.\\s*|→\\s*Sugestão)");
+            // Divide por bullet (-) ou número (1. 2.)
+            String[] parts = section.split("(?=\\s*-\\s+|-\\s*\\[|\\d+\\.\\s+)");
             for (String part : parts) {
-                String trimmed = part.trim();
-                if (trimmed.length() > 10) {
+                String trimmed = sanitizePlainText(part).trim();
+                if (trimmed.length() > 15 && !isNenhumAmbiguity(trimmed)) {
                     warnings.add(trimmed);
                 }
             }
-            if (warnings.isEmpty() && section.length() > 15) {
-                warnings.add(section);
+            if (warnings.isEmpty() && section.length() > 20 && !isNenhumAmbiguity(section)) {
+                warnings.add(sanitizePlainText(section).trim());
             }
         }
         return warnings;
     }
 
-    /**
-     * Relatório geral: requisitos com problemas, conflitos e sugestões de resolução.
-     */
+    private boolean isNenhumAmbiguity(String text) {
+        if (text == null || text.isBlank()) return true;
+        String lower = text.toLowerCase().trim();
+        if (lower.equals("nenhum") || lower.equals("nenhum.")) return true;
+        if (lower.startsWith("nenhum.") || lower.startsWith("nenhum ")) return true;
+        if (lower.length() < 35 && (lower.contains("não há") || lower.contains("nao ha") || lower.contains("sem ambiguidade"))) return true;
+        return false;
+    }
+
     @Transactional(readOnly = true)
     public RequirementReportDTO getGeneralReport(@NonNull UUID requirementSetId) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))

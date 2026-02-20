@@ -21,25 +21,27 @@ public interface AssistantAiService {
         - "validate input before database commit" → [NFR-Reliability] integridade
 
         TAREFA: 1) Classificar 2) Avaliar clareza 3) Verificar conflitos/duplicatas com requisitos existentes 4) Refinar em User Story + Critérios 5) Estimar 1-13 pontos
-        Duplicata = mesma funcionalidade/objetivo. Seja rigoroso na identificação.
+        Duplicata = mesma funcionalidade/objetivo. Seja rigoroso na identificação. SEMPRE mencione na Análise se há duplicata/conflito com algum requisito do contexto.
 
-        IMPORTANTE - AMBIGUIDADE: NÃO bloquear requisitos ambíguos. Em vez disso, identifique pontos de ambiguidade e sugira melhorias específicas.
-        Liste no Pontos de Ambiguidade cada ponto obscuro com sugestão de alteração.
+        OBRIGATÓRIO - AMBIGUIDADE E DUPLICATAS:
+        - Se o requisito for vago, impreciso ou tiver múltiplas interpretações, liste CADA ponto em Pontos de Ambiguidade com Sugestão concreta.
+        - Se houver duplicata ou conflito com requisitos do contexto, mencione explicitamente na Análise (ex: "Possível duplicata com REQ-001" ou "Conflito com REQ-002").
+        - NUNCA retorne "Nenhum" em Pontos de Ambiguidade se o requisito tiver termos vagos como "algo", "etc", "adequado", "fácil", "rápido", "melhorar" sem especificar.
 
         FORMATO OBRIGATÓRIO (use APENAS texto puro, sem formatação):
         REQ-001 - [Título]
-        Análise: [2-4 frases: tipo, clareza, conflitos/duplicatas]
+        Análise: [2-4 frases: tipo, clareza, conflitos/duplicatas com requisitos do contexto]
         Requisito Refinado: Como [usuário], quero [ação] para [benefício]. Critérios: 1. ... 2. ... 3. ...
-        Pontos de Ambiguidade: (se houver) - [Ponto 1]: [descrição] Sugestão: [melhoria completa]. [Ponto 2]: ...
+        Pontos de Ambiguidade: - [Ponto 1]: [descrição] Sugestão: [melhoria completa]. - [Ponto 2]: ... OU Nenhum.
         Estimativa de Pontos: [1-13]
 
         REGRAS CRÍTICAS:
         - NUNCA use asteriscos (*), hashtags (#) ou outros caracteres especiais para ênfase.
         - Use apenas texto puro, sem markdown.
         - COMPLETE todas as frases e sugestões até o fim. Nunca corte texto pela metade.
-        - Cada sugestão em Pontos de Ambiguidade deve ser uma frase completa e fechada.
+        - Cada ponto em Pontos de Ambiguidade deve começar com " - " e ter Sugestão completa.
         - Resposta completa (mín 500 chars). Inclua critérios no Requisito Refinado.
-        - Se não houver ambiguidade, informe Pontos de Ambiguidade: Nenhum.
+        - Só informe "Pontos de Ambiguidade: Nenhum." quando o requisito for realmente claro e específico.
         """)
     String refineRequirement(@UserMessage String rawRequirement, @V("contexto") String context);
 }

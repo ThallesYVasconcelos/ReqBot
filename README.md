@@ -53,16 +53,41 @@ mvn spring-boot:run
 
 ## Configuração
 
-| Propriedade | Obrigatória | Descrição |
-|-------------|:-----------:|-----------|
-| `gemini.api-key` | Sim | API key do Google Gemini |
-| `gemini.model` | Não | Modelo (padrão: gemini-2.5-flash) |
-| `spring.datasource.url` | Sim | URL do PostgreSQL |
-| `spring.datasource.username` | Sim | Usuário do banco |
-| `spring.datasource.password` | Sim | Senha do banco |
-| `auth.jwt.secret` | Sim | Segredo JWT (mín. 32 caracteres) |
-| `auth.admin.emails` | Não | Emails de admin (separados por vírgula) |
-| `auth.google.client-id` | Não | Client ID do Google OAuth |
+A aplicação pode ser configurada via arquivo `application.properties` ou variáveis de ambiente. Em produção, prefira variáveis de ambiente ou secrets do provedor de cloud.
+
+### Propriedades principais
+
+| Propriedade / Variável de ambiente | Obrigatória | Descrição |
+|-----------------------------------|:-----------:|-----------|
+| `gemini.api-key` / `GEMINI_API_KEY` | Sim | API key do [Google Gemini AI](https://aistudio.google.com/apikey) |
+| `gemini.model` / `GEMINI_MODEL` | Não | Modelo (padrão: gemini-2.5-flash) |
+| `spring.datasource.url` / `SPRING_DATASOURCE_URL` | Sim | URL JDBC (ex: `jdbc:postgresql://host:5432/requirements_db`; adicione `?sslmode=require` se o banco exigir SSL) |
+| `spring.datasource.username` / `SPRING_DATASOURCE_USERNAME` | Sim | Usuário do banco |
+| `spring.datasource.password` / `SPRING_DATASOURCE_PASSWORD` | Sim | Senha do banco |
+| `pgvector.host` / `PGVECTOR_HOST` | Sim | Host do PostgreSQL (para embeddings) |
+| `pgvector.port` / `PGVECTOR_PORT` | Sim | Porta (padrão: 5432) |
+| `pgvector.database` / `PGVECTOR_DATABASE` | Sim | Nome do banco |
+| `pgvector.user` / `PGVECTOR_USER` | Sim | Usuário do banco |
+| `pgvector.password` / `PGVECTOR_PASSWORD` | Sim | Senha do banco |
+| `auth.jwt.secret` / `AUTH_JWT_SECRET` | Sim | Segredo JWT (mín. 32 caracteres) |
+| `auth.admin.emails` / `AUTH_ADMIN_EMAILS` | Não | Emails de admin (separados por `;` ou `,`) |
+| `auth.google.client-id` / `AUTH_GOOGLE_CLIENT_ID` | Não | Client ID do Google OAuth |
+| `server.port` / `PORT` | Não | Porta HTTP (padrão: 8080; Cloud Run usa `PORT`) |
+
+### Banco de dados
+
+O PostgreSQL precisa da extensão **PGVector** para embeddings. Após criar o banco, execute:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### Arquivo de exemplo
+
+```bash
+cp application.properties.example application.properties
+# Edite application.properties com seus valores
+```
 
 ## Autenticação
 
@@ -132,18 +157,95 @@ Envie o `idToken` do Google no body da requisição.
 - **Projetos** — Organiza requisitos em conjuntos com nome e descrição
 - **Histórico** — Registra alterações de cada requisito
 
-## Deploy (Cloud Run)
+## Deploy
 
-Para deploy automático no Google Cloud Run, consulte [docs/DEPLOY.md](docs/DEPLOY.md).
+### Build da imagem Docker
+
+```bash
+docker build -f docker/Dockerfile -t requirements-assistant:latest .
+```
+
+### Executar com Docker
+
+```bash
+docker run -p 8080:8080 \
+  -e GEMINI_API_KEY=sua_key \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/requirements_db \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=senha \
+  -e PGVECTOR_HOST=host \
+  -e PGVECTOR_PORT=5432 \
+  -e PGVECTOR_DATABASE=requirements_db \
+  -e PGVECTOR_USER=postgres \
+  -e PGVECTOR_PASSWORD=senha \
+  -e AUTH_JWT_SECRET=segredo_minimo_32_caracteres \
+  requirements-assistant:latest
+```
+
+### Docker Compose (produção)
+
+Para subir aplicação + banco com `docker-compose`:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+### Deploy em plataformas cloud
+
+A aplicação é um contêiner Java/Spring Boot padrão e pode ser implantada em qualquer plataforma que suporte Docker:
+
+| Plataforma | Observações |
+|------------|-------------|
+| **AWS** | ECS, EKS, App Runner, Elastic Beanstalk |
+| **Azure** | Container Apps, App Service, AKS |
+| **Google Cloud** | Cloud Run, GKE |
+| **Kubernetes** | Qualquer cluster (K8s, OpenShift, etc.) |
+| **VPS / VM** | Docker ou `java -jar` + systemd |
+
+**Requisitos gerais:**
+- Porta configurável via `PORT` (padrão 8080)
+- Memória mínima recomendada: 2Gi (modelo ONNX para embeddings)
+- Conectividade com PostgreSQL (banco com PGVector)
+
+### Variáveis de ambiente em produção
+
+Em qualquer ambiente, configure pelo menos:
+
+```
+GEMINI_API_KEY=
+SPRING_DATASOURCE_URL=
+SPRING_DATASOURCE_USERNAME=
+SPRING_DATASOURCE_PASSWORD=
+PGVECTOR_HOST=
+PGVECTOR_PORT=
+PGVECTOR_DATABASE=
+PGVECTOR_USER=
+PGVECTOR_PASSWORD=
+AUTH_JWT_SECRET=
+AUTH_ADMIN_EMAILS=email1@exemplo.com;email2@exemplo.com
+AUTH_GOOGLE_CLIENT_ID=  # opcional, para OAuth
+```
+
+### Deploy no Google Cloud Run
+
+O projeto inclui workflow de CI/CD para Cloud Run:
+
+- **GitHub Actions:** push em `main` dispara deploy em `.github/workflows/deploy.yml`
+- **Script local:** `.\deploy.ps1` (PowerShell) usa `gcloud run deploy --source .`
+
+Consulte a seção de deploy no README ou os comentários no workflow para configurar os secrets do GitHub.
 
 ---
 
 ## Estrutura do projeto
 
 ```
+├── .github/workflows/
+│   └── deploy.yml          # Deploy automático (GitHub Actions)
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
+├── deploy.ps1              # Deploy local para Cloud Run
 ├── src/main/java/requirementsAssistantAI/
 │   ├── application/     # Controllers, services, ports
 │   ├── domain/          # Entidades

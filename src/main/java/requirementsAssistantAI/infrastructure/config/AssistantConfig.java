@@ -9,7 +9,10 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+
+import javax.sql.DataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -48,7 +51,14 @@ public class AssistantConfig {
    
     @Bean
     @Profile("!test")
-    public EmbeddingStore<TextSegment> embeddingStore() {
+    public EmbeddingStore<TextSegment> embeddingStore(@Autowired(required = false) DataSource dataSource) {
+        if (dataSource != null) {
+            return PgVectorEmbeddingStore.datasourceBuilder()
+                    .datasource(dataSource)
+                    .table("embeddings")
+                    .dimension(384)
+                    .build();
+        }
         return PgVectorEmbeddingStore.builder()
                 .host(pgHost)
                 .port(pgPort)
