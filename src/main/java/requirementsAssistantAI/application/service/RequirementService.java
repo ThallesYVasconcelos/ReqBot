@@ -16,6 +16,7 @@ import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.dto.RequirementDTO;
+import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import requirementsAssistantAI.dto.SaveRequirementRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
@@ -246,8 +247,23 @@ public class RequirementService {
     }
 
     @Transactional(readOnly = true)
-    public List<RequirementHistory> getRequirementHistory(@NonNull UUID requirementId) {
-        return requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(Objects.requireNonNull(requirementId));
+    public List<RequirementHistoryDTO> getRequirementHistory(@NonNull UUID requirementId) {
+        List<RequirementHistory> history = requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(Objects.requireNonNull(requirementId));
+        return history.stream().map(this::convertToHistoryDTO).collect(Collectors.toList());
+    }
+
+    private RequirementHistoryDTO convertToHistoryDTO(RequirementHistory h) {
+        return new RequirementHistoryDTO(
+                h.getId(),
+                h.getRequirement() != null ? h.getRequirement().getUuid() : null,
+                h.getRequirementId(),
+                h.getRawRequirement(),
+                h.getRefinedRequirement(),
+                h.getAnalise(),
+                h.getAmbiguityWarnings(),
+                h.getActionType(),
+                h.getCreatedAt()
+        );
     }
 
     @Transactional

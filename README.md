@@ -231,7 +231,6 @@ AUTH_GOOGLE_CLIENT_ID=  # opcional, para OAuth
 O projeto inclui workflow de CI/CD para Cloud Run:
 
 - **GitHub Actions:** push em `main` dispara deploy em `.github/workflows/deploy.yml`
-- **Script local:** `.\deploy.ps1` (PowerShell) usa `gcloud run deploy --source .`
 
 Consulte a seção de deploy no README ou os comentários no workflow para configurar os secrets do GitHub.
 
@@ -245,7 +244,6 @@ Consulte a seção de deploy no README ou os comentários no workflow para confi
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
-├── deploy.ps1              # Deploy local para Cloud Run
 ├── src/main/java/requirementsAssistantAI/
 │   ├── application/     # Controllers, services, ports
 │   ├── domain/          # Entidades

@@ -1,6 +1,6 @@
 package requirementsAssistantAI.application.controller;
 
-import requirementsAssistantAI.domain.RequirementHistory;
+import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -83,8 +83,8 @@ public class RequirementController {
     }
 
     @GetMapping("/{id}/history")
-    public ResponseEntity<List<RequirementHistory>> getRequirementHistory(@PathVariable @NonNull UUID id) {
-        List<RequirementHistory> history = requirementService.getRequirementHistory(Objects.requireNonNull(id));
+    public ResponseEntity<List<RequirementHistoryDTO>> getRequirementHistory(@PathVariable @NonNull UUID id) {
+        List<RequirementHistoryDTO> history = requirementService.getRequirementHistory(Objects.requireNonNull(id));
         return ResponseEntity.ok(history);
     }
 
