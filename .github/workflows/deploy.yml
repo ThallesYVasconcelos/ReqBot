@@ -49,6 +49,7 @@ jobs:
           timeout: 300
           flags: --cpu-boost --memory=2Gi --startup-probe=tcpSocket.port=8080,initialDelaySeconds=90,periodSeconds=15,failureThreshold=10
           env_vars: |
+            SPRING_PROFILES_ACTIVE=cloud
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             AUTH_GOOGLE_CLIENT_ID=${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
             AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET }}

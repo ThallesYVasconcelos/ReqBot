@@ -14,6 +14,8 @@ ai.chat.cache.max-entries=50
 ai.chat.cache.ttl-minutes=10
 
 # Configurações do Banco de Dados (PostgreSQL)
+# Para Supabase no Cloud Run: use Transaction mode (porta 6543) e adicione prepareThreshold=0
+# Ex: jdbc:postgresql://aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
 spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
 spring.datasource.username=postgres
 spring.datasource.password=sua_senha_aqui

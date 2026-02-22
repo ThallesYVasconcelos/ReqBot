@@ -238,14 +238,36 @@ O projeto inclui workflow de CI/CD para Cloud Run:
 
 Consulte a seção de deploy no README ou os comentários no workflow para configurar os secrets do GitHub.
 
-### Solução de problemas: OAuth, CORS e 403
+### Solução de problemas: OAuth, CORS, Supabase e 403
 
 | Erro | Causa | Solução |
 |------|-------|---------|
 | **CORS** "No Access-Control-Allow-Origin" | Backend não permite a origem do frontend | Secret `CORS_ALLOWED_ORIGINS` com `http://localhost:4200,https://reqbot-teal.vercel.app` (vírgula ou `;`). Redeploy. |
-| **GSI_LOGGER** "origin not allowed" | Origem não cadastrada no Google | Google Console → Credenciais → OAuth → Origens JavaScript: adicione `http://localhost:4200`, `http://localhost`, `https://reqbot-teal.vercel.app`. Aguarde 5–30 min. |
+| **GSI_LOGGER** "origin not allowed" | Origem não cadastrada no Google | Google Console → Credenciais → OAuth → Origens JavaScript: adicione `http://localhost:4200`, `http://localhost`, `https://reqbot-teal.vercel.app`, `https://requirements-assistant-teal.vercel.app`. Aguarde 5–30 min. |
 | **403 Forbidden** no login | Email não autorizado | Admin: email em `AUTH_ADMIN_EMAILS` ou `@computacao.ufcg.edu.br` / `@dsc.ufcg.edu.br`. User: `@ccc.ufcg.edu.br`. |
 | **500** no login | Erro no backend (token, banco) | Verifique logs do Cloud Run. Confirme que `AUTH_GOOGLE_CLIENT_ID` é o mesmo do frontend. |
+| **Container failed to start** / **MaxClientsInSessionMode** | Supabase Session mode (porta 5432) esgota conexões no Cloud Run | Use **Transaction mode** (porta 6543). Veja [Supabase + Cloud Run](#supabase--cloud-run) abaixo. |
+
+#### Supabase + Cloud Run
+
+Se o backend falha ao iniciar com `MaxClientsInSessionMode: max clients reached` ou `Container failed to start and listen on PORT`:
+
+1. **Use Transaction mode** em vez de Session mode. No Supabase Dashboard → Connect → escolha **Transaction** (porta 6543).
+2. **Atualize o secret `SPRING_DATASOURCE_URL`** no GitHub para a URL do Transaction mode:
+   ```
+   jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
+   ```
+   - Troque `aws-1-us-east-1` pelo host do seu projeto (ex: `aws-0-us-east-1`).
+   - O parâmetro `prepareThreshold=0` é obrigatório para Transaction mode.
+3. O profile `cloud` (já ativado no deploy) reduz o pool de conexões para 3, evitando esgotar o limite do Supabase.
+
+#### OAuth no frontend (Vercel e localhost)
+
+- O **frontend** deve usar o **mesmo Client ID** configurado no backend (`AUTH_GOOGLE_CLIENT_ID`).
+- No Google Cloud Console → Credenciais → seu cliente OAuth:
+  - **Origens JavaScript autorizadas:** `http://localhost:4200`, `https://reqbot-teal.vercel.app`, `https://requirements-assistant-teal.vercel.app`
+  - **URIs de redirecionamento:** os mesmos domínios (o frontend usa One Tap / popup, mas alguns fluxos exigem redirect).
+- Se o login retorna 500, o backend provavelmente não está respondendo — verifique se o Cloud Run está saudável e se a URL do backend no frontend está correta.
 
 ---
 
