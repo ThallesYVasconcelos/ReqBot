@@ -61,6 +61,7 @@ jobs:
             PGVECTOR_DATABASE=${{ secrets.PGVECTOR_DATABASE }}
             PGVECTOR_USER=${{ secrets.PGVECTOR_USER }}
             PGVECTOR_PASSWORD=${{ secrets.PGVECTOR_PASSWORD }}
+            CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
 
       - name: Show deployment URL
         run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
