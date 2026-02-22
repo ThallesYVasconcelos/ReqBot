@@ -22,7 +22,7 @@ public class CorsConfig implements WebMvcConfigurer {
             "http://localhost:4200", "http://localhost:5173", "http://localhost:3000");
 
     private List<String> resolveOrigins() {
-        List<String> origins = Arrays.stream(allowedOriginsConfig.split(","))
+        List<String> origins = Arrays.stream(allowedOriginsConfig.split("[,;]"))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
