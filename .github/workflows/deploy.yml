@@ -63,5 +63,13 @@ jobs:
             PGVECTOR_PASSWORD=${{ secrets.PGVECTOR_PASSWORD }}
             CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
 
+      - name: Remove invalid env vars (added manually by mistake)
+        run: |
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --remove-env-vars="igor.correia.silva@ccc.ufcg.edu.br,campelo@computacao.ufcg.edu.br,campelo@dsc.ufcg.edu.br,https://seu-app.vercel.app,https://reqbot-teal.vercel.app,https://requirements-assistant-teal.vercel.app,spring.datasource.username" \
+            --quiet 2>/dev/null || true
+
       - name: Show deployment URL
         run: echo "Deployed to ${{ steps.deploy.outputs.url }}"

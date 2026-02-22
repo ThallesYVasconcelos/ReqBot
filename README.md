@@ -238,6 +238,15 @@ O projeto inclui workflow de CI/CD para Cloud Run:
 
 Consulte a seção de deploy no README ou os comentários no workflow para configurar os secrets do GitHub.
 
+### Solução de problemas: OAuth, CORS e 403
+
+| Erro | Causa | Solução |
+|------|-------|---------|
+| **CORS** "No Access-Control-Allow-Origin" | Backend não permite a origem do frontend | Secret `CORS_ALLOWED_ORIGINS` com `http://localhost:4200,https://reqbot-teal.vercel.app` (vírgula ou `;`). Redeploy. |
+| **GSI_LOGGER** "origin not allowed" | Origem não cadastrada no Google | Google Console → Credenciais → OAuth → Origens JavaScript: adicione `http://localhost:4200`, `http://localhost`, `https://reqbot-teal.vercel.app`. Aguarde 5–30 min. |
+| **403 Forbidden** no login | Email não autorizado | Admin: email em `AUTH_ADMIN_EMAILS` ou `@computacao.ufcg.edu.br` / `@dsc.ufcg.edu.br`. User: `@ccc.ufcg.edu.br`. |
+| **500** no login | Erro no backend (token, banco) | Verifique logs do Cloud Run. Confirme que `AUTH_GOOGLE_CLIENT_ID` é o mesmo do frontend. |
+
 ---
 
 ## Estrutura do projeto
