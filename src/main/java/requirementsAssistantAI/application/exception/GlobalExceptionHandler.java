@@ -1,5 +1,7 @@
 package requirementsAssistantAI.application.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,6 +14,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleResourceNotFound(ResourceNotFoundException ex) {
@@ -69,5 +73,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("message", message));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, String>> handleGeneric(Exception ex) {
+        log.error("Erro interno no servidor: {}", ex.getMessage(), ex);
+        String userMessage = "Erro interno do servidor. Tente novamente em alguns minutos.";
+        if (ex.getMessage() != null) {
+            if (ex.getMessage().contains("connection") || ex.getMessage().contains("database") || ex.getMessage().contains("Connection") || ex.getMessage().contains("SQL")) {
+                userMessage = "Serviço temporariamente indisponível. O banco de dados está em manutenção. Tente novamente em alguns minutos.";
+            } else if (ex.getMessage().contains("token") || ex.getMessage().contains("Token") || ex.getMessage().contains("Google")) {
+                userMessage = "Erro ao validar credenciais do Google. Tente fazer login novamente.";
+            }
+        }
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", userMessage));
     }
 }

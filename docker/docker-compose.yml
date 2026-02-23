@@ -25,14 +25,39 @@ services:
       - "8080:8080"
     environment:
       PORT: 8080
+      SERVER_PORT: 8080
+      SERVER_ADDRESS: 0.0.0.0
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/requirements_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      PGVECTOR_HOST: postgres
+      PGVECTOR_PORT: 5432
+      PGVECTOR_DATABASE: requirements_db
+      PGVECTOR_USER: postgres
+      PGVECTOR_PASSWORD: postgres
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      AUTH_GOOGLE_CLIENT_ID: ${AUTH_GOOGLE_CLIENT_ID}
+      AUTH_ADMIN_EMAILS: ${AUTH_ADMIN_EMAILS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
 
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command:
+      - "http"
+      - "app:8080"
+      - "--pooling-enabled"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

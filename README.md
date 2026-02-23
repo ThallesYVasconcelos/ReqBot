@@ -22,14 +22,25 @@ API para gerenciamento e refinamento de requisitos de software com IA (Gemini), 
 ### Docker (recomendado)
 
 ```bash
-# Subir banco e aplicação
+# 1. Criar .env com suas chaves (obrigatório para IA e login)
+cp docker/.env.example docker/.env
+# Edite docker/.env com GEMINI_API_KEY, AUTH_JWT_SECRET, etc.
+
+# 2. Subir banco e aplicação
 docker compose -f docker/docker-compose.yml up -d
 
-# Apenas o banco (para desenvolvimento local)
-docker compose -f docker/docker-compose.yml up -d postgres
+# Ver logs (útil para debug)
+docker compose -f docker/docker-compose.yml logs -f app
 ```
 
 **Portas:** API em `http://localhost:8080` · PostgreSQL em `localhost:5433`
+
+**Variáveis de ambiente:** O `application.properties` é excluído do build Docker por segurança. Configure `GEMINI_API_KEY` e `AUTH_JWT_SECRET` em `docker/.env` (copie de `docker/.env.example`).
+
+```bash
+# Apenas o banco (para desenvolvimento local)
+docker compose -f docker/docker-compose.yml up -d postgres
+```
 
 ### Desenvolvimento local
 
@@ -268,6 +279,22 @@ Se o backend falha ao iniciar com `MaxClientsInSessionMode: max clients reached`
   - **Origens JavaScript autorizadas:** `http://localhost:4200`, `https://reqbot-teal.vercel.app`, `https://requirements-assistant-teal.vercel.app`
   - **URIs de redirecionamento:** os mesmos domínios (o frontend usa One Tap / popup, mas alguns fluxos exigem redirect).
 - Se o login retorna 500, o backend provavelmente não está respondendo — verifique se o Cloud Run está saudável e se a URL do backend no frontend está correta.
+
+#### Backend via ngrok (URL pública temporária)
+
+Quando o backend está exposto via ngrok (ex: `https://xxxx.ngrok-free.dev`):
+
+1. **Google Cloud Console** → Credenciais → seu cliente OAuth:
+   - **Origens JavaScript autorizadas:** adicione `https://SEU-DOMINIO.ngrok-free.dev`
+   - **URIs de redirecionamento:** adicione `https://SEU-DOMINIO.ngrok-free.dev` (e `https://SEU-DOMINIO.ngrok-free.dev/api/auth/callback/google` se usar fluxo redirect)
+
+2. **CORS:** inclua a URL do ngrok em `CORS_ALLOWED_ORIGINS` no `docker-compose.yml` ou `.env`.
+
+3. **Header ngrok-skip-browser-warning:** o ngrok exibe uma página de aviso na primeira visita. Para evitar que as requisições fiquem presas, o **frontend** deve enviar o header `ngrok-skip-browser-warning: 69420` em **todas** as chamadas à API quando a URL base for ngrok. Exemplo (Angular HttpClient):
+   ```typescript
+   // No interceptor ou no serviço de API
+   headers = headers.set('ngrok-skip-browser-warning', '69420');
+   ```
 
 ---
 

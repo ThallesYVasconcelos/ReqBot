@@ -43,7 +43,6 @@ README*
 scripts/
 
 # Config files (use environment variables or volumes)
-application.properties
 application-dev.properties
 application-prod.properties
 
