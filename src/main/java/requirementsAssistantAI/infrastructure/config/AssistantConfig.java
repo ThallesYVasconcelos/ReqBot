@@ -30,7 +30,7 @@ public class AssistantConfig {
     private static final Logger log = LoggerFactory.getLogger(AssistantConfig.class);
 
     @Value("${gemini.api.key:${gemini.api-key:}}") private String geminiApiKey;
-    @Value("${gemini.model:gemini-1.5-flash}") private String geminiModel;
+    @Value("${gemini.model:gemini-2.5-flash}") private String geminiModel;
 
     @Value("${pgvector.host:localhost}") private String pgHost;
     @Value("${pgvector.port:5432}") private int pgPort;
