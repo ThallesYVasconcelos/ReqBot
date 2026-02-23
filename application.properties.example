@@ -13,6 +13,9 @@ ai.chat.cache.enabled=true
 ai.chat.cache.max-entries=50
 ai.chat.cache.ttl-minutes=10
 
+# Relatório: filtro de intenção reduz falsos positivos mas adiciona 1 chamada LLM. Desabilite para relatórios mais rápidos.
+ai.report.intention-filter.enabled=true
+
 # Configurações do Banco de Dados (PostgreSQL)
 # Para Supabase no Cloud Run: use Transaction mode (porta 6543) e adicione prepareThreshold=0
 # Ex: jdbc:postgresql://aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0

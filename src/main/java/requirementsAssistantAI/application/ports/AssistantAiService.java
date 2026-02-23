@@ -46,21 +46,21 @@ public interface AssistantAiService {
     String refineRequirement(@UserMessage String rawRequirement, @V("contexto") String context);
 
     /**
-     * Filtro de intenção: verifica se dois requisitos têm a MESMA intenção e ações (verbos).
-     * Evita falsos positivos quando requisitos compartilham vocabulário mas são complementares
-     * (ex: CRUD vs refino com IA).
+     * Filtro de intenção em lote: verifica múltiplos pares de requisitos em uma única chamada.
+     * Para cada par, retorna SIM (duplicata/conflito) ou NAO (complementares).
      *
-     * @return "SIM" se duplicata/conflito real; "NAO" se complementares.
+     * @param batchPrompt texto com Par 1, Par 2, etc. e instrução de retornar uma linha por par (SIM ou NAO)
+     * @return resposta com uma linha por par, na mesma ordem (ex: "NAO\nSIM\nNAO")
      */
     @SystemMessage("""
-        Você é um analista de requisitos. Verifique se DOIS requisitos têm a MESMA INTENÇÃO (user intent) e as MESMAS AÇÕES PRINCIPAIS (verbos).
+        Você é um analista de requisitos. Para CADA par de requisitos abaixo, verifique se têm a MESMA INTENÇÃO e as MESMAS AÇÕES PRINCIPAIS (verbos).
 
-        FALSO POSITIVO a evitar: requisitos que compartilham vocabulário (persona, objeto, termos) mas têm intenções DIFERENTES e complementares.
-        Exemplo: "Criar/editar/listar conjuntos de requisitos" vs "Inserir texto bruto e gerar versão refinada com IA" = COMPLEMENTARES (um é CRUD/infraestrutura, outro é ferramenta de refino com IA).
+        FALSO POSITIVO a evitar: requisitos que compartilham vocabulário mas têm intenções DIFERENTES e complementares.
+        Exemplo: "Criar/editar/listar conjuntos" vs "Inserir texto e gerar versão refinada com IA" = NAO (CRUD vs refino IA).
 
-        Retorne APENAS uma palavra: SIM ou NAO
-        - SIM: duplicata ou conflito real (mesma funcionalidade, mesma ação principal, redundância)
-        - NAO: complementares (ações diferentes, facetas diferentes da UX, um não substitui o outro)
+        Retorne EXATAMENTE uma linha por par, na mesma ordem dos pares. Cada linha: SIM ou NAO.
+        - SIM: duplicata/conflito real (mesma funcionalidade, redundância)
+        - NAO: complementares (ações diferentes, um não substitui o outro)
         """)
-    String verifySameIntent(@UserMessage String comparisonPrompt);
+    String verifySameIntentBatch(@UserMessage String batchPrompt);
 }

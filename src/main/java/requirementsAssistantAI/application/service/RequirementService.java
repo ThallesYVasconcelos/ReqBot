@@ -47,6 +47,8 @@ public class RequirementService {
     private int maxApprovedResults;
     @Value("${ai.context.max-length:2500}")
     private int maxContextLength;
+    @Value("${ai.report.intention-filter.enabled:true}")
+    private boolean intentionFilterEnabled;
 
     private final AssistantAiService assistantAiService;
     private final RequirementRepository requirementRepository;
@@ -520,29 +522,18 @@ public class RequirementService {
 
             EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
 
-            List<RequirementReportDTO.ConflictInfo> conflicts = new ArrayList<>();
+            List<ConflictCandidate> candidates = new ArrayList<>();
             for (var match : result.matches()) {
                 String matchedUuid = match.embedded().metadata().getString("requirement_uuid");
-                if (matchedUuid != null && matchedUuid.equals(req.getUuid().toString())) {
-                    continue;
-                }
-                if (queryText.equals(match.embedded().text())) {
-                    continue;
-                }
-                String matchedText = match.embedded().text();
-                double score = match.score();
-                Requirement conflicting = findRequirementByText(requirements, matchedText);
-                if (conflicting != null && isSameIntent(req, conflicting)) {
-                    String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
-                    conflicts.add(new RequirementReportDTO.ConflictInfo(
-                            conflicting.getUuid(),
-                            conflicting.getRequirementId(),
-                            conflicting.getRefinedRequirement(),
-                            score,
-                            suggestion
-                    ));
+                if (matchedUuid != null && matchedUuid.equals(req.getUuid().toString())) continue;
+                if (queryText.equals(match.embedded().text())) continue;
+                Requirement conflicting = findRequirementByText(requirements, match.embedded().text());
+                if (conflicting != null) {
+                    candidates.add(new ConflictCandidate(req, conflicting, match.score()));
                 }
             }
+
+            List<RequirementReportDTO.ConflictInfo> conflicts = filterByIntent(req, candidates);
 
             boolean hasConflicts = !conflicts.isEmpty();
             boolean hasAmbiguity = req.getAmbiguityWarnings() != null && !req.getAmbiguityWarnings().isEmpty();
@@ -589,26 +580,64 @@ public class RequirementService {
         return null;
     }
 
+    private record ConflictCandidate(Requirement req, Requirement conflicting, double score) {}
+
     /**
-     * Filtro de intenção: usa a LLM para verificar se dois requisitos têm a mesma intenção e ações.
-     * Evita falsos positivos quando requisitos compartilham vocabulário mas são complementares
-     * (ex: CRUD vs refino com IA).
-     *
-     * @return true se duplicata/conflito real; false se complementares ou em caso de erro (conservador).
+     * Filtro de intenção em lote: uma única chamada LLM para todos os pares.
+     * Se desabilitado, retorna todos os candidatos como conflitos.
      */
-    private boolean isSameIntent(Requirement req1, Requirement req2) {
-        String text1 = (req1.getRequirementId() != null ? req1.getRequirementId() + ": " : "") + (req1.getRefinedRequirement() != null ? req1.getRefinedRequirement() : req1.getRawRequirement());
-        String text2 = (req2.getRequirementId() != null ? req2.getRequirementId() + ": " : "") + (req2.getRefinedRequirement() != null ? req2.getRefinedRequirement() : req2.getRawRequirement());
-        String prompt = "REQ-A: " + text1 + "\nREQ-B: " + text2 + "\n\nEstes dois requisitos têm a mesma intenção e as mesmas ações principais? (SIM ou NAO)";
+    private List<RequirementReportDTO.ConflictInfo> filterByIntent(Requirement req, List<ConflictCandidate> candidates) {
+        if (candidates.isEmpty()) return List.of();
+
+        if (!intentionFilterEnabled) {
+            return candidates.stream()
+                    .map(c -> new RequirementReportDTO.ConflictInfo(
+                            c.conflicting().getUuid(),
+                            c.conflicting().getRequirementId(),
+                            c.conflicting().getRefinedRequirement(),
+                            c.score(),
+                            "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação."))
+                    .toList();
+        }
+
+        StringBuilder prompt = new StringBuilder();
+        for (int i = 0; i < candidates.size(); i++) {
+            ConflictCandidate c = candidates.get(i);
+            String t1 = (c.req().getRequirementId() != null ? c.req().getRequirementId() + ": " : "") + (c.req().getRefinedRequirement() != null ? c.req().getRefinedRequirement() : c.req().getRawRequirement());
+            String t2 = (c.conflicting().getRequirementId() != null ? c.conflicting().getRequirementId() + ": " : "") + (c.conflicting().getRefinedRequirement() != null ? c.conflicting().getRefinedRequirement() : c.conflicting().getRawRequirement());
+            prompt.append("Par ").append(i + 1).append(":\nREQ-A: ").append(t1).append("\nREQ-B: ").append(t2).append("\n\n");
+        }
+        prompt.append("Retorne uma linha por par (SIM ou NAO), na ordem Par 1, Par 2, etc.");
+
         try {
-            String response = assistantAiService.verifySameIntent(prompt);
-            if (response == null) return true;
-            String r = response.trim().toLowerCase();
-            if (r.contains("nao") || r.contains("não")) return false;
-            return r.contains("sim");
+            String response = assistantAiService.verifySameIntentBatch(prompt.toString());
+            String[] lines = response != null ? response.split("\\r?\\n") : new String[0];
+            List<RequirementReportDTO.ConflictInfo> result = new ArrayList<>();
+            String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
+            for (int i = 0; i < candidates.size(); i++) {
+                ConflictCandidate c = candidates.get(i);
+                String line = i < lines.length ? lines[i].trim().toLowerCase() : "";
+                boolean sameIntent = line.isBlank() || (line.contains("sim") && !line.contains("nao") && !line.contains("não"));
+                if (sameIntent) {
+                    result.add(new RequirementReportDTO.ConflictInfo(
+                            c.conflicting().getUuid(),
+                            c.conflicting().getRequirementId(),
+                            c.conflicting().getRefinedRequirement(),
+                            c.score(),
+                            suggestion));
+                }
+            }
+            return result;
         } catch (Exception e) {
-            log.warn("Filtro de intenção falhou para {} vs {}: {}. Mantendo como possível conflito.", req1.getRequirementId(), req2.getRequirementId(), e.getMessage());
-            return true;
+            log.warn("Filtro de intenção em lote falhou: {}. Reportando todos como possíveis conflitos.", e.getMessage());
+            return candidates.stream()
+                    .map(c -> new RequirementReportDTO.ConflictInfo(
+                            c.conflicting().getUuid(),
+                            c.conflicting().getRequirementId(),
+                            c.conflicting().getRefinedRequirement(),
+                            c.score(),
+                            "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação."))
+                    .toList();
         }
     }
 }
