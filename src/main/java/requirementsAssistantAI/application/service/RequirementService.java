@@ -35,9 +35,13 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import dev.langchain4j.data.document.Metadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class RequirementService {
+
+    private static final Logger log = LoggerFactory.getLogger(RequirementService.class);
 
     @Value("${ai.context.max-approved-results:5}")
     private int maxApprovedResults;
@@ -116,11 +120,13 @@ public class RequirementService {
                     break;
                 }
             } catch (Exception e) {
+                log.warn("Erro ao chamar IA (tentativa {}/{}): {} - {}", retryCount + 1, MAX_RETRIES + 1, e.getClass().getSimpleName(), e.getMessage());
                 if (retryCount < MAX_RETRIES) {
                     retryCount++;
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
                 }
+                log.error("IA falhou após todas as tentativas. Verifique GEMINI_API_KEY e logs do Cloud Run.", e);
                 aiResponse = null;
                 break;
             }

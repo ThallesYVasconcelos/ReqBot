@@ -258,7 +258,7 @@ Consulte a seção de deploy no README ou os comentários no workflow para confi
 | **403 Forbidden** no login | Email não autorizado | Admin: email em `AUTH_ADMIN_EMAILS` ou `@computacao.ufcg.edu.br` / `@dsc.ufcg.edu.br`. User: `@ccc.ufcg.edu.br`. |
 | **500** no login | Erro no backend (token, banco) | Verifique logs do Cloud Run. Confirme que `AUTH_GOOGLE_CLIENT_ID` é o mesmo do frontend. |
 | **Container failed to start** / **MaxClientsInSessionMode** | Supabase Session mode (porta 5432) esgota conexões no Cloud Run | Use **Transaction mode** (porta 6543). Veja [Supabase + Cloud Run](#supabase--cloud-run) abaixo. |
-| **PROCESSAMENTO PARCIAL** / IA não responde no Cloud Run | `GEMINI_API_KEY` não chega ao Spring (mapeamento incorreto) ou timeout | Confirme que o secret `GEMINI_API_KEY` está configurado no GitHub (Settings → Secrets). O `application-cloud.properties` mapeia `${GEMINI_API_KEY}` para `gemini.api-key`. Redeploy após alterar secrets. |
+| **PROCESSAMENTO PARCIAL** / IA não responde no Cloud Run | `GEMINI_API_KEY` vazia ou inválida | 1) GitHub: **Settings → Secrets and variables → Actions** (ou **Environments → production → Secrets**). Adicione `GEMINI_API_KEY` com a chave do [Google AI Studio](https://aistudio.google.com/apikey). 2) Verifique os logs do Cloud Run: se aparecer "GEMINI_API_KEY está vazia" ou "Erro ao chamar IA", o secret não está chegando. 3) Redeploy após alterar secrets. |
 
 #### Supabase + Cloud Run
 

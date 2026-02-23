@@ -19,13 +19,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.application.ports.ChatAiService;
 
 @Configuration
 public class AssistantConfig {
 
-    @Value("${gemini.api-key:}") private String geminiApiKey;
+    private static final Logger log = LoggerFactory.getLogger(AssistantConfig.class);
+
+    @Value("${gemini.api.key:${gemini.api-key:}}") private String geminiApiKey;
     @Value("${gemini.model:gemini-1.5-flash}") private String geminiModel;
 
     @Value("${pgvector.host:localhost}") private String pgHost;
@@ -37,8 +41,12 @@ public class AssistantConfig {
     @Bean
     @ConditionalOnProperty(name = "ai.provider", havingValue = "gemini", matchIfMissing = true)
     public ChatModel geminiModel() {
+        String key = geminiApiKey != null ? geminiApiKey.trim() : "";
+        if (key.isBlank()) {
+            log.warn("GEMINI_API_KEY está vazia - chamadas à IA falharão. Configure o secret no GitHub (Settings > Secrets > GEMINI_API_KEY) ou a variável de ambiente.");
+        }
         return GoogleAiGeminiChatModel.builder()
-                .apiKey(geminiApiKey)
+                .apiKey(key)
                 .modelName(geminiModel)
                 .temperature(0.3)
                 .maxOutputTokens(8192)
