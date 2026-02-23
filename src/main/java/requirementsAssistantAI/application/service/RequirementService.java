@@ -532,8 +532,8 @@ public class RequirementService {
                 String matchedText = match.embedded().text();
                 double score = match.score();
                 Requirement conflicting = findRequirementByText(requirements, matchedText);
-                String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
-                if (conflicting != null) {
+                if (conflicting != null && isSameIntent(req, conflicting)) {
+                    String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
                     conflicts.add(new RequirementReportDTO.ConflictInfo(
                             conflicting.getUuid(),
                             conflicting.getRequirementId(),
@@ -587,5 +587,28 @@ public class RequirementService {
             }
         }
         return null;
+    }
+
+    /**
+     * Filtro de intenção: usa a LLM para verificar se dois requisitos têm a mesma intenção e ações.
+     * Evita falsos positivos quando requisitos compartilham vocabulário mas são complementares
+     * (ex: CRUD vs refino com IA).
+     *
+     * @return true se duplicata/conflito real; false se complementares ou em caso de erro (conservador).
+     */
+    private boolean isSameIntent(Requirement req1, Requirement req2) {
+        String text1 = (req1.getRequirementId() != null ? req1.getRequirementId() + ": " : "") + (req1.getRefinedRequirement() != null ? req1.getRefinedRequirement() : req1.getRawRequirement());
+        String text2 = (req2.getRequirementId() != null ? req2.getRequirementId() + ": " : "") + (req2.getRefinedRequirement() != null ? req2.getRefinedRequirement() : req2.getRawRequirement());
+        String prompt = "REQ-A: " + text1 + "\nREQ-B: " + text2 + "\n\nEstes dois requisitos têm a mesma intenção e as mesmas ações principais? (SIM ou NAO)";
+        try {
+            String response = assistantAiService.verifySameIntent(prompt);
+            if (response == null) return true;
+            String r = response.trim().toLowerCase();
+            if (r.contains("nao") || r.contains("não")) return false;
+            return r.contains("sim");
+        } catch (Exception e) {
+            log.warn("Filtro de intenção falhou para {} vs {}: {}. Mantendo como possível conflito.", req1.getRequirementId(), req2.getRequirementId(), e.getMessage());
+            return true;
+        }
     }
 }

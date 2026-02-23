@@ -44,4 +44,23 @@ public interface AssistantAiService {
         - Só informe "Pontos de Ambiguidade: Nenhum." quando o requisito for realmente claro e específico.
         """)
     String refineRequirement(@UserMessage String rawRequirement, @V("contexto") String context);
+
+    /**
+     * Filtro de intenção: verifica se dois requisitos têm a MESMA intenção e ações (verbos).
+     * Evita falsos positivos quando requisitos compartilham vocabulário mas são complementares
+     * (ex: CRUD vs refino com IA).
+     *
+     * @return "SIM" se duplicata/conflito real; "NAO" se complementares.
+     */
+    @SystemMessage("""
+        Você é um analista de requisitos. Verifique se DOIS requisitos têm a MESMA INTENÇÃO (user intent) e as MESMAS AÇÕES PRINCIPAIS (verbos).
+
+        FALSO POSITIVO a evitar: requisitos que compartilham vocabulário (persona, objeto, termos) mas têm intenções DIFERENTES e complementares.
+        Exemplo: "Criar/editar/listar conjuntos de requisitos" vs "Inserir texto bruto e gerar versão refinada com IA" = COMPLEMENTARES (um é CRUD/infraestrutura, outro é ferramenta de refino com IA).
+
+        Retorne APENAS uma palavra: SIM ou NAO
+        - SIM: duplicata ou conflito real (mesma funcionalidade, mesma ação principal, redundância)
+        - NAO: complementares (ações diferentes, facetas diferentes da UX, um não substitui o outro)
+        """)
+    String verifySameIntent(@UserMessage String comparisonPrompt);
 }
