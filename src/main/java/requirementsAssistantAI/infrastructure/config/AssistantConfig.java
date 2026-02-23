@@ -6,6 +6,8 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.service.AiServices;
+
+import java.time.Duration;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
@@ -40,6 +42,7 @@ public class AssistantConfig {
                 .modelName(geminiModel)
                 .temperature(0.3)
                 .maxOutputTokens(8192)
+                .timeout(Duration.ofSeconds(90))
                 .build();
     }
 
