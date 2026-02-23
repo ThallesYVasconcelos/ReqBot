@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 import requirementsAssistantAI.application.service.ChatbotUserService;
+import requirementsAssistantAI.dto.ChatbotScheduleDTO;
 import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.RequirementSetDTO;
 
@@ -29,6 +30,12 @@ public class ChatbotUserController {
     public ResponseEntity<List<RequirementDTO>> getApprovedRequirements() {
         List<RequirementDTO> requirements = chatbotUserService.getApprovedRequirements();
         return ResponseEntity.ok(requirements);
+    }
+
+    @GetMapping("/chatbot/schedule")
+    public ResponseEntity<ChatbotScheduleDTO> getSchedule() {
+        ChatbotScheduleDTO schedule = chatbotUserService.getChatbotSchedule();
+        return ResponseEntity.ok(schedule);
     }
 
     @GetMapping("/chatbot/availability")

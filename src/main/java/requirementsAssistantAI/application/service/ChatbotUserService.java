@@ -2,6 +2,7 @@ package requirementsAssistantAI.application.service;
 
 import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
+import requirementsAssistantAI.dto.ChatbotScheduleDTO;
 import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.RequirementSetDTO;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,16 @@ public class ChatbotUserService {
         );
         
         return allRequirements;
+    }
+
+    @Transactional(readOnly = true)
+    public ChatbotScheduleDTO getChatbotSchedule() {
+        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+                .orElse(null);
+        if (config == null) {
+            return new ChatbotScheduleDTO(null, null);
+        }
+        return new ChatbotScheduleDTO(config.getStartTime(), config.getEndTime());
     }
 
     @Transactional(readOnly = true)
