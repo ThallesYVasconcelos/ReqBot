@@ -20,4 +20,6 @@ public class CreateChatbotConfigRequest {
     
     @JsonDeserialize(using = JacksonConfig.LocalTimeDeserializer.class)
     private LocalTime endTime;
+
+    private Boolean showRequirementsToUsers = false;
 }

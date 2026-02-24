@@ -48,6 +48,7 @@ public class ChatbotConfigService {
                 request.getEndTime()
         );
         config.setIsActive(true);
+        config.setShowRequirementsToUsers(Boolean.TRUE.equals(request.getShowRequirementsToUsers()));
         config = chatbotConfigRepository.save(config);
         return convertToDTO(config);
     }
@@ -110,6 +111,7 @@ public class ChatbotConfigService {
                 requirementSet != null ? requirementSet.getName() : null,
                 config.getStartTime(),
                 config.getEndTime(),
+                config.getShowRequirementsToUsers(),
                 config.getCreatedAt(),
                 config.getUpdatedAt(),
                 config.isAvailableNow()

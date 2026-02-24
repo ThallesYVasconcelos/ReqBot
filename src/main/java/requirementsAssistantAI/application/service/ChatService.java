@@ -87,7 +87,7 @@ public class ChatService {
             String rawAnswer = chatAiService.answerQuestion(question, context);
             String answer = (rawAnswer == null || rawAnswer.trim().isEmpty())
                     ? "Desculpe, não consegui processar sua pergunta. Por favor, tente novamente ou reformule sua pergunta."
-                    : rawAnswer;
+                    : sanitizeAnswer(rawAnswer);
             if (cacheEnabled && rawAnswer != null && !rawAnswer.trim().isEmpty()) {
                 evictIfNeeded();
                 answerCache.put(cacheKey, new CachedAnswer(rawAnswer, LocalDateTime.now()));
@@ -127,12 +127,12 @@ public class ChatService {
             int limit = Math.min(savedRequirements.size(), maxRagResults);
             return savedRequirements.stream()
                     .limit(limit)
-                    .map(req -> req.getRequirementId() + ": " + req.getRefinedRequirement())
+                    .map(req -> stripRequirementId(req.getRefinedRequirement()))
                     .collect(Collectors.joining("\n---\n"));
         }
 
         return result.matches().stream()
-                .map(m -> m.embedded().text())
+                .map(m -> stripRequirementIdFromText(m.embedded().text()))
                 .collect(Collectors.joining("\n---\n"));
     }
 
@@ -167,5 +167,20 @@ public class ChatService {
             return "24 horas";
         }
         return startTime + " às " + endTime;
+    }
+
+    private String stripRequirementId(String text) {
+        if (text == null) return "";
+        return text.replaceFirst("^[A-Z]{2,3}-\\d+\\s*:\\s*", "").trim();
+    }
+
+    private String stripRequirementIdFromText(String text) {
+        if (text == null) return "";
+        return stripRequirementId(text);
+    }
+
+    private String sanitizeAnswer(String answer) {
+        if (answer == null) return "";
+        return answer.replaceAll("\\b[A-Z]{2,4}-\\d+\\b", "[requisito]");
     }
 }

@@ -52,9 +52,9 @@ public class ChatbotUserService {
         ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
                 .orElse(null);
         if (config == null) {
-            return new ChatbotScheduleDTO(null, null);
+            return new ChatbotScheduleDTO(null, null, false);
         }
-        return new ChatbotScheduleDTO(config.getStartTime(), config.getEndTime());
+        return new ChatbotScheduleDTO(config.getStartTime(), config.getEndTime(), config.getShowRequirementsToUsers());
     }
 
     @Transactional(readOnly = true)

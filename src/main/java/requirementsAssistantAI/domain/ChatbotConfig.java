@@ -27,6 +27,9 @@ public class ChatbotConfig {
     @Column(name = "end_time")
     private LocalTime endTime;
 
+    @Column(name = "show_requirements_to_users", nullable = false)
+    private Boolean showRequirementsToUsers = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -71,6 +74,9 @@ public class ChatbotConfig {
 
     public LocalTime getEndTime() { return endTime; }
     public void setEndTime(LocalTime endTime) { this.endTime = endTime; }
+
+    public Boolean getShowRequirementsToUsers() { return showRequirementsToUsers != null ? showRequirementsToUsers : false; }
+    public void setShowRequirementsToUsers(Boolean showRequirementsToUsers) { this.showRequirementsToUsers = showRequirementsToUsers; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
