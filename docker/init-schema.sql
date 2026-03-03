@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS chatbot_config (
     requirement_set_id UUID NOT NULL REFERENCES requirement_sets(id) ON DELETE CASCADE,
     start_time TIME,
     end_time TIME,
+    show_requirements_to_users BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP
 );
