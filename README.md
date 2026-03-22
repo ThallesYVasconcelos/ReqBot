@@ -201,19 +201,6 @@ Para subir aplicação + banco com `docker-compose`:
 ```bash
 docker compose -f docker/docker-compose.yml up -d
 ```
-
-### Deploy em plataformas cloud
-
-A aplicação é um contêiner Java/Spring Boot padrão e pode ser implantada em qualquer plataforma que suporte Docker:
-
-| Plataforma | Observações |
-|------------|-------------|
-| **AWS** | ECS, EKS, App Runner, Elastic Beanstalk |
-| **Azure** | Container Apps, App Service, AKS |
-| **Google Cloud** | Cloud Run, GKE |
-| **Kubernetes** | Qualquer cluster (K8s, OpenShift, etc.) |
-| **VPS / VM** | Docker ou `java -jar` + systemd |
-
 **Requisitos gerais:**
 - Porta configurável via `PORT` (padrão 8080)
 - Memória mínima recomendada: 2Gi (modelo ONNX para embeddings)
@@ -238,66 +225,6 @@ AUTH_ADMIN_EMAILS=email1@exemplo.com;email2@exemplo.com
 AUTH_GOOGLE_CLIENT_ID=  # opcional, para OAuth
 CORS_ALLOWED_ORIGINS=http://localhost:4200,https://seu-app.vercel.app  # opcional; inclua localhost para testar local contra API em produção
 ```
-
-**Importante:** `SPRING_DATASOURCE_URL` deve começar com `jdbc:postgresql://`, não apenas `postgresql://`.
-
-### Deploy no Google Cloud Run
-
-O projeto inclui workflow de CI/CD para Cloud Run:
-
-- **GitHub Actions:** push em `main` dispara deploy em `.github/workflows/deploy.yml`
-
-Consulte a seção de deploy no README ou os comentários no workflow para configurar os secrets do GitHub.
-
-### Solução de problemas: OAuth, CORS, Supabase e 403
-
-| Erro | Causa | Solução |
-|------|-------|---------|
-| **CORS** "No Access-Control-Allow-Origin" | Backend não permite a origem do frontend | Secret `CORS_ALLOWED_ORIGINS` com `http://localhost:4200,https://reqbot-teal.vercel.app` (vírgula ou `;`). Redeploy. |
-| **GSI_LOGGER** "origin not allowed" | Origem não cadastrada no Google | Google Console → Credenciais → OAuth → Origens JavaScript: adicione `http://localhost:4200`, `http://localhost`, `https://reqbot-teal.vercel.app`, `https://requirements-assistant-teal.vercel.app`. Aguarde 5–30 min. |
-| **403 Forbidden** no login | Email não autorizado | Admin: email em `AUTH_ADMIN_EMAILS` ou `@computacao.ufcg.edu.br` / `@dsc.ufcg.edu.br`. User: `@ccc.ufcg.edu.br`. |
-| **500** no login | Erro no backend (token, banco) | Verifique logs do Cloud Run. Confirme que `AUTH_GOOGLE_CLIENT_ID` é o mesmo do frontend. |
-| **Container failed to start** / **MaxClientsInSessionMode** | Supabase Session mode (porta 5432) esgota conexões no Cloud Run | Use **Transaction mode** (porta 6543). Veja [Supabase + Cloud Run](#supabase--cloud-run) abaixo. |
-| **PROCESSAMENTO PARCIAL** / IA não responde no Cloud Run | `GEMINI_API_KEY` vazia ou inválida | 1) GitHub: **Settings → Secrets and variables → Actions** (ou **Environments → production → Secrets**). Adicione `GEMINI_API_KEY` com a chave do [Google AI Studio](https://aistudio.google.com/apikey). 2) Verifique os logs do Cloud Run: se aparecer "GEMINI_API_KEY está vazia" ou "Erro ao chamar IA", o secret não está chegando. 3) Redeploy após alterar secrets. |
-
-#### Supabase + Cloud Run
-
-Se o backend falha ao iniciar com `MaxClientsInSessionMode: max clients reached` ou `Container failed to start and listen on PORT`:
-
-1. **Use Transaction mode** em vez de Session mode. No Supabase Dashboard → Connect → escolha **Transaction** (porta 6543).
-2. **Atualize o secret `SPRING_DATASOURCE_URL`** no GitHub para a URL do Transaction mode:
-   ```
-   jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
-   ```
-   - Troque `aws-1-us-east-1` pelo host do seu projeto (ex: `aws-0-us-east-1`).
-   - O parâmetro `prepareThreshold=0` é obrigatório para Transaction mode.
-3. O profile `cloud` (já ativado no deploy) reduz o pool de conexões para 3, evitando esgotar o limite do Supabase.
-
-#### OAuth no frontend (Vercel e localhost)
-
-- O **frontend** deve usar o **mesmo Client ID** configurado no backend (`AUTH_GOOGLE_CLIENT_ID`).
-- No Google Cloud Console → Credenciais → seu cliente OAuth:
-  - **Origens JavaScript autorizadas:** `http://localhost:4200`, `https://reqbot-teal.vercel.app`, `https://requirements-assistant-teal.vercel.app`
-  - **URIs de redirecionamento:** os mesmos domínios (o frontend usa One Tap / popup, mas alguns fluxos exigem redirect).
-- Se o login retorna 500, o backend provavelmente não está respondendo — verifique se o Cloud Run está saudável e se a URL do backend no frontend está correta.
-
-#### Backend via ngrok (URL pública temporária)
-
-Quando o backend está exposto via ngrok (ex: `https://xxxx.ngrok-free.dev`):
-
-1. **Google Cloud Console** → Credenciais → seu cliente OAuth:
-   - **Origens JavaScript autorizadas:** adicione `https://SEU-DOMINIO.ngrok-free.dev`
-   - **URIs de redirecionamento:** adicione `https://SEU-DOMINIO.ngrok-free.dev` (e `https://SEU-DOMINIO.ngrok-free.dev/api/auth/callback/google` se usar fluxo redirect)
-
-2. **CORS:** inclua a URL do ngrok em `CORS_ALLOWED_ORIGINS` no `docker-compose.yml` ou `.env`.
-
-3. **Header ngrok-skip-browser-warning:** o ngrok exibe uma página de aviso na primeira visita. Para evitar que as requisições fiquem presas, o **frontend** deve enviar o header `ngrok-skip-browser-warning: 69420` em **todas** as chamadas à API quando a URL base for ngrok. Exemplo (Angular HttpClient):
-   ```typescript
-   // No interceptor ou no serviço de API
-   headers = headers.set('ngrok-skip-browser-warning', '69420');
-   ```
-
----
 
 ## Estrutura do projeto
 
