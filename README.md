@@ -1,4 +1,4 @@
-# Requirements Assistant AI
+# ReqBot - Requirements Assistant AI
 
 API para gerenciamento e refinamento de requisitos de software com IA (Gemini), chatbot RAG educacional e autenticação via Google OAuth.
 
