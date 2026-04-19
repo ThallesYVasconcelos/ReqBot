@@ -1,7 +1,10 @@
 package requirementsAssistantAI.application.service;
 
+import requirementsAssistantAI.domain.ChatMessage;
 import requirementsAssistantAI.domain.ChatbotConfig;
-import requirementsAssistantAI.domain.Requirement;
+import requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.domain.Workspace;
+import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
 import dev.langchain4j.data.embedding.Embedding;
@@ -16,14 +19,16 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import requirementsAssistantAI.application.ports.ChatAiService;
+import requirementsAssistantAI.dto.ChatMessageDTO;
 import requirementsAssistantAI.dto.ChatResponseDTO;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 public class ChatService {
@@ -32,15 +37,16 @@ public class ChatService {
     private int maxRagResults;
     @Value("${ai.chat.cache.enabled:true}")
     private boolean cacheEnabled;
-    @Value("${ai.chat.cache.max-entries:50}")
+    @Value("${ai.chat.cache.max-entries:100}")
     private int cacheMaxEntries;
-    @Value("${ai.chat.cache.ttl-minutes:10}")
+    @Value("${ai.chat.cache.ttl-minutes:15}")
     private int cacheTtlMinutes;
 
     private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 
     private final ChatbotConfigRepository chatbotConfigRepository;
     private final RequirementRepository requirementRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final ChatAiService chatAiService;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
@@ -48,92 +54,148 @@ public class ChatService {
     public ChatService(
             ChatbotConfigRepository chatbotConfigRepository,
             RequirementRepository requirementRepository,
+            ChatMessageRepository chatMessageRepository,
             ChatAiService chatAiService,
             EmbeddingModel embeddingModel,
             EmbeddingStore<TextSegment> embeddingStore) {
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.requirementRepository = requirementRepository;
+        this.chatMessageRepository = chatMessageRepository;
         this.chatAiService = chatAiService;
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
     }
 
-    @Transactional(readOnly = true)
-    public ChatResponseDTO answerQuestion(String question) {
+    /**
+     * Responde a pergunta do usuário e persiste o histórico na tabela chat_messages.
+     *
+     * @param question   texto da pergunta
+     * @param userEmail  e-mail do usuário autenticado (null em acesso público)
+     */
+    @Transactional
+    public ChatResponseDTO answerQuestion(String question, String userEmail) {
         ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
-                .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo. Configure o chatbot através do endpoint /api/admin/chatbot/config"));
+                .orElseThrow(() -> new RuntimeException(
+                        "Chatbot não está configurado ou está inativo. Configure através de /api/admin/chatbot/config"));
 
         if (!config.isAvailableNow()) {
-            return new ChatResponseDTO(
-                    "Desculpe, o chatbot está fora do horário de funcionamento. " +
-                    "Horário de atendimento: " + formatTimeRange(config.getStartTime(), config.getEndTime()),
-                    question,
-                    LocalDateTime.now(),
-                    false,
-                    false
-            );
+            String unavailableMsg = "Desculpe, o chatbot está fora do horário de funcionamento. " +
+                    "Horário de atendimento: " + formatTimeRange(config.getStartTime(), config.getEndTime());
+            persistMessage(userEmail, question, unavailableMsg, false, false, config.getRequirementSet());
+            return new ChatResponseDTO(unavailableMsg, question, LocalDateTime.now(), false, false);
+        }
+
+        RequirementSet requirementSet = config.getRequirementSet();
+        Workspace workspace = requirementSet != null ? requirementSet.getWorkspace() : null;
+        String projectId = requirementSet != null ? requirementSet.getId().toString() : null;
+        String cacheKey = projectId + "||" + normalizeQuestion(question);
+
+        if (cacheEnabled) {
+            CachedAnswer cached = answerCache.get(cacheKey);
+            if (cached != null && !cached.isExpired(cacheTtlMinutes)) {
+                persistMessage(userEmail, question, cached.answer, true, true, requirementSet);
+                return new ChatResponseDTO(cached.answer, question, LocalDateTime.now(), true, true);
+            }
         }
 
         try {
-            String projectId = config.getRequirementSet().getId().toString();
-            String cacheKey = projectId + "||" + normalizeQuestion(question);
-            if (cacheEnabled) {
-                CachedAnswer cached = answerCache.get(cacheKey);
-                if (cached != null && !cached.isExpired(cacheTtlMinutes)) {
-                    return new ChatResponseDTO(cached.answer, question, LocalDateTime.now(), true, true);
-                }
-            }
             String context = findRelevantContext(question, projectId);
             String rawAnswer = chatAiService.answerQuestion(question, context);
             String answer = (rawAnswer == null || rawAnswer.trim().isEmpty())
                     ? "Desculpe, não consegui processar sua pergunta. Por favor, tente novamente ou reformule sua pergunta."
                     : sanitizeAnswer(rawAnswer);
+
             if (cacheEnabled && rawAnswer != null && !rawAnswer.trim().isEmpty()) {
                 evictIfNeeded();
-                answerCache.put(cacheKey, new CachedAnswer(rawAnswer, LocalDateTime.now()));
+                answerCache.put(cacheKey, new CachedAnswer(answer, LocalDateTime.now()));
             }
+
+            persistMessage(userEmail, question, answer, false, true, requirementSet);
             return new ChatResponseDTO(answer, question, LocalDateTime.now(), true, true);
+
         } catch (Exception e) {
-            return new ChatResponseDTO(
-                    "Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.",
-                    question,
-                    LocalDateTime.now(),
-                    false,
-                    true
+            String errorMsg = "Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.";
+            persistMessage(userEmail, question, errorMsg, false, true, requirementSet);
+            return new ChatResponseDTO(errorMsg, question, LocalDateTime.now(), false, true);
+        }
+    }
+
+    /** Mantém compatibilidade com chamadas sem userEmail (acesso anônimo). */
+    @Transactional
+    public ChatResponseDTO answerQuestion(String question) {
+        return answerQuestion(question, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatMessageDTO> getChatHistoryByProject(UUID requirementSetId) {
+        return chatMessageRepository
+                .findByRequirementSet_IdOrderByAskedAtDesc(requirementSetId)
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatMessageDTO> getChatHistoryByUser(String userEmail) {
+        return chatMessageRepository
+                .findByUserEmailOrderByAskedAtDesc(userEmail)
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    private void persistMessage(String userEmail, String question, String answer,
+                                boolean fromCache, boolean chatbotAvailable,
+                                RequirementSet requirementSet) {
+        try {
+            Workspace workspace = requirementSet != null ? requirementSet.getWorkspace() : null;
+            ChatMessage msg = new ChatMessage(
+                    userEmail, question, answer, fromCache, chatbotAvailable, requirementSet, workspace
             );
+            chatMessageRepository.save(msg);
+        } catch (Exception ex) {
+            // Persistência de histórico é best-effort — não deve derrubar a resposta ao usuário
         }
     }
 
     private String findRelevantContext(String userQuestion, String projectId) {
-        List<Requirement> savedRequirements = requirementRepository.findByRequirementSet_Id(
-                UUID.fromString(projectId)
-        );
+        if (projectId == null) return "Nenhum projeto configurado.";
 
-        if (savedRequirements.isEmpty()) {
+        long totalRequirements = requirementRepository.countByRequirementSetId(UUID.fromString(projectId));
+        if (totalRequirements == 0) {
             return "Nenhum requisito salvo encontrado para este projeto.";
         }
 
         Embedding queryEmbedding = embeddingModel.embed(userQuestion).content();
-        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
+        EmbeddingSearchRequest semanticRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
                 .maxResults(maxRagResults)
                 .minScore(0.6)
                 .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
                 .build();
 
-        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
+        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(semanticRequest);
 
-        if (result.matches().isEmpty()) {
-            int limit = Math.min(savedRequirements.size(), maxRagResults);
-            return savedRequirements.stream()
-                    .limit(limit)
-                    .map(req -> stripRequirementId(req.getRefinedRequirement()))
+        if (!result.matches().isEmpty()) {
+            return result.matches().stream()
+                    .map(m -> stripRequirementIdFromText(m.embedded().text()))
                     .collect(Collectors.joining("\n---\n"));
         }
 
-        return result.matches().stream()
-                .map(m -> stripRequirementIdFromText(m.embedded().text()))
-                .collect(Collectors.joining("\n---\n"));
+        EmbeddingSearchRequest fallbackRequest = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(maxRagResults)
+                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
+                .build();
+
+        EmbeddingSearchResult<TextSegment> fallback = embeddingStore.search(fallbackRequest);
+        if (!fallback.matches().isEmpty()) {
+            return fallback.matches().stream()
+                    .map(m -> stripRequirementIdFromText(m.embedded().text()))
+                    .collect(Collectors.joining("\n---\n"));
+        }
+
+        return "Nenhum contexto relevante encontrado para a pergunta.";
     }
 
     private String normalizeQuestion(String q) {
@@ -150,33 +212,44 @@ public class ChatService {
         }
     }
 
+    private ChatMessageDTO toDTO(ChatMessage cm) {
+        return new ChatMessageDTO(
+                cm.getId(),
+                cm.getUserEmail(),
+                cm.getQuestion(),
+                cm.getAnswer(),
+                cm.getAnsweredFromCache(),
+                cm.getChatbotAvailable(),
+                cm.getAskedAt(),
+                cm.getRequirementSet() != null ? cm.getRequirementSet().getId() : null,
+                cm.getRequirementSet() != null ? cm.getRequirementSet().getName() : null,
+                cm.getWorkspace() != null ? cm.getWorkspace().getId() : null,
+                cm.getWorkspace() != null ? cm.getWorkspace().getName() : null
+        );
+    }
+
     private static class CachedAnswer {
         final String answer;
         final LocalDateTime createdAt;
+
         CachedAnswer(String answer, LocalDateTime createdAt) {
             this.answer = answer;
             this.createdAt = createdAt;
         }
+
         boolean isExpired(int ttlMinutes) {
             return createdAt.plusMinutes(ttlMinutes).isBefore(LocalDateTime.now());
         }
     }
 
     private String formatTimeRange(java.time.LocalTime startTime, java.time.LocalTime endTime) {
-        if (startTime == null || endTime == null) {
-            return "24 horas";
-        }
+        if (startTime == null || endTime == null) return "24 horas";
         return startTime + " às " + endTime;
-    }
-
-    private String stripRequirementId(String text) {
-        if (text == null) return "";
-        return text.replaceFirst("^[A-Z]{2,3}-\\d+\\s*:\\s*", "").trim();
     }
 
     private String stripRequirementIdFromText(String text) {
         if (text == null) return "";
-        return stripRequirementId(text);
+        return text.replaceFirst("^[A-Z]{2,3}-\\d+\\s*:\\s*", "").trim();
     }
 
     private String sanitizeAnswer(String answer) {

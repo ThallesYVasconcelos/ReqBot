@@ -1,56 +1,121 @@
 spring.application.name=requirements-assistant
 
-# Inteligência Artificial - Gemini
-ai.provider=gemini
+# =============================================================================
+# INTELIGÊNCIA ARTIFICIAL — Seleção automática de provedor
+# =============================================================================
+#
+# O sistema seleciona o provedor automaticamente na seguinte ordem de prioridade:
+#   1. Gemini   — se GEMINI_API_KEY estiver configurada  (padrão recomendado)
+#   2. OpenAI   — se apenas OPENAI_API_KEY estiver configurada (fallback)
+#
+# Basta configurar a(s) chave(s) desejada(s). Não é preciso indicar o provedor.
+#
+# --- Gemini (Google AI Studio — gratuito com limites generosos) ---
+# Obtenha em: https://aistudio.google.com/apikey
 gemini.api-key=SUA_GEMINI_API_KEY_AQUI
+# Modelos disponíveis: gemini-2.5-flash (rápido), gemini-2.5-pro (mais capaz)
 gemini.model=gemini-2.5-flash
 
-# Otimização de tokens (reduz consumo da API)
+# --- OpenAI (fallback — usado quando GEMINI_API_KEY não está configurada) ---
+# Obtenha em: https://platform.openai.com/api-keys
+# Deixe em branco para não usar OpenAI.
+openai.api-key=
+# Modelos: gpt-4o-mini (econômico), gpt-4o (mais capaz)
+openai.model=gpt-4o-mini
+# Para usar proxies compatíveis com OpenAI (ex.: Groq, Together, LM Studio):
+# openai.base-url=https://api.groq.com/openai/v1
+
+# Otimização de tokens (reduz consumo e latência da API)
 ai.context.max-approved-results=5
 ai.context.max-length=2500
 ai.chat.max-rag-results=3
 ai.chat.cache.enabled=true
-ai.chat.cache.max-entries=50
-ai.chat.cache.ttl-minutes=10
+ai.chat.cache.max-entries=100
+ai.chat.cache.ttl-minutes=15
 
-# Relatório: filtro de intenção reduz falsos positivos mas adiciona 1 chamada LLM. Desabilite para relatórios mais rápidos.
+# Filtro de intenção: reduz falsos positivos mas adiciona 1 chamada LLM.
+# Desabilite para relatórios mais rápidos em ambientes com muitos requisitos.
 ai.report.intention-filter.enabled=true
 
-# Configurações do Banco de Dados (PostgreSQL)
-# Para Supabase no Cloud Run: use Transaction mode (porta 6543) e adicione prepareThreshold=0
-# Ex: jdbc:postgresql://aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
-spring.datasource.url=jdbc:postgresql://localhost:5433/requirements_db
+# =============================================================================
+# BANCO DE DADOS — PostgreSQL / Supabase
+# =============================================================================
+#
+# LOCAL (desenvolvimento):
+#   spring.datasource.url=jdbc:postgresql://localhost:5432/requirements_db
+#
+# SUPABASE PRODUÇÃO — use o Transaction Pooler (porta 6543) para compatibilidade
+# com plataformas stateless (Cloud Run, Koyeb, Fly.io, Render):
+#   spring.datasource.url=jdbc:postgresql://aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
+#
+# IMPORTANTE: prepareThreshold=0 é obrigatório com o Transaction Pooler do Supabase.
+# Sem isso, prepared statements falham e as queries retornam erros aleatórios.
+#
+spring.datasource.url=jdbc:postgresql://localhost:5432/requirements_db
 spring.datasource.username=postgres
 spring.datasource.password=sua_senha_aqui
 spring.datasource.driver-class-name=org.postgresql.Driver
 
-# JPA/Hibernate
+# =============================================================================
+# HIKARICP — Connection Pool (crítico para Cloud Run / Koyeb / Fly.io)
+# =============================================================================
+# Supabase Transaction Pooler aceita até 15 conexões simultâneas no free tier.
+# Mantenha maximum-pool-size <= 5 por instância para não exceder o limite.
+spring.datasource.hikari.maximum-pool-size=5
+spring.datasource.hikari.minimum-idle=2
+# Conexão ociosa é descartada após 5 min (evita timeout do pooler)
+spring.datasource.hikari.idle-timeout=300000
+# Testa a conexão antes de usar (evita "broken pipe" após inatividade)
+spring.datasource.hikari.connection-test-query=SELECT 1
+spring.datasource.hikari.connection-timeout=20000
+spring.datasource.hikari.max-lifetime=1800000
+
+# =============================================================================
+# JPA / HIBERNATE
+# =============================================================================
+# Use 'validate' em produção para não alterar o schema automaticamente.
+# Em desenvolvimento, 'update' é mais conveniente.
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 spring.jpa.show-sql=false
+# Batch insert/update — melhora performance em saves em lote
+spring.jpa.properties.hibernate.jdbc.batch_size=20
+spring.jpa.properties.hibernate.order_inserts=true
+spring.jpa.properties.hibernate.order_updates=true
 
-# PGVector (Embeddings)
+# =============================================================================
+# PGVECTOR — Embedding Store
+# =============================================================================
+# Usado apenas quando spring.datasource NÃO está configurado (fallback manual).
+# Com Supabase, configure o DataSource acima e deixe estes como fallback.
 pgvector.host=localhost
-pgvector.port=5433
+pgvector.port=5432
 pgvector.database=requirements_db
 pgvector.user=postgres
 pgvector.password=sua_senha_aqui
 
-# Segurança JWT e Autenticação
+# =============================================================================
+# SEGURANÇA — JWT e Autenticação
+# =============================================================================
 auth.jwt.secret=ALTERE_ESTE_SECRET_PARA_UM_VALOR_ALEATORIO_MINIMO_32_CARACTERES
 auth.jwt.issuer=requirements-assistant-api
+# TTL do token em segundos (padrão: 1 hora)
 auth.jwt.ttl-seconds=3600
 
-# Google OAuth (Opcional - para validação de idToken)
+# Google OAuth — Client ID do console.cloud.google.com
 auth.google.client-id=
 
-# Emails de administradores (separados por vírgula)
+# Emails com perfil ADMIN (separados por vírgula)
 auth.admin.emails=admin@exemplo.com
 
-# CORS - origens permitidas (separadas por vírgula)
+# =============================================================================
+# CORS — Origens permitidas
+# =============================================================================
 cors.allowed-origins=http://localhost:4200,http://localhost:5173,http://localhost:3000,https://seu-projeto.vercel.app
 
-# Swagger/OpenAPI
+# =============================================================================
+# SWAGGER / OPENAPI
+# =============================================================================
 springdoc.api-docs.path=/v3/api-docs
 springdoc.swagger-ui.path=/swagger-ui.html
 springdoc.swagger-ui.operationsSorter=method

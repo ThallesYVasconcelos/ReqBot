@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
 
 import java.time.Duration;
@@ -15,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import javax.sql.DataSource;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -29,37 +29,72 @@ public class AssistantConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AssistantConfig.class);
 
+    // Gemini
     @Value("${gemini.api.key:${gemini.api-key:}}") private String geminiApiKey;
     @Value("${gemini.model:gemini-2.5-flash}") private String geminiModel;
 
+    // OpenAI (fallback quando Gemini não estiver configurado)
+    @Value("${openai.api.key:${openai.api-key:}}") private String openAiApiKey;
+    @Value("${openai.model:gpt-4o-mini}") private String openAiModel;
+    @Value("${openai.base-url:https://api.openai.com/v1}") private String openAiBaseUrl;
+
+    // PGVector
     @Value("${pgvector.host:localhost}") private String pgHost;
     @Value("${pgvector.port:5432}") private int pgPort;
     @Value("${pgvector.database:postgres}") private String pgDatabase;
     @Value("${pgvector.user:postgres}") private String pgUser;
     @Value("${pgvector.password:}") private String pgPassword;
 
+    /**
+     * Seleciona o modelo de LLM automaticamente:
+     * 1. Gemini (padrão) — se GEMINI_API_KEY estiver configurada
+     * 2. OpenAI (fallback) — se apenas OPENAI_API_KEY estiver configurada
+     * Se nenhuma estiver configurada, usa Gemini com chave vazia e loga aviso.
+     */
     @Bean
-    @ConditionalOnProperty(name = "ai.provider", havingValue = "gemini", matchIfMissing = true)
-    public ChatModel geminiModel() {
-        String key = geminiApiKey != null ? geminiApiKey.trim() : "";
-        if (key.isBlank()) {
-            log.warn("GEMINI_API_KEY está vazia - chamadas à IA falharão. Configure o secret no GitHub (Settings > Secrets > GEMINI_API_KEY) ou a variável de ambiente.");
+    public ChatModel chatModel() {
+        String geminiKey = trim(geminiApiKey);
+        String openAiKey = trim(openAiApiKey);
+
+        if (!geminiKey.isBlank()) {
+            log.info("Provedor de IA: Gemini (modelo: {})", geminiModel);
+            return GoogleAiGeminiChatModel.builder()
+                    .apiKey(geminiKey)
+                    .modelName(geminiModel)
+                    .temperature(0.3)
+                    .maxOutputTokens(2048)
+                    .timeout(Duration.ofSeconds(60))
+                    .build();
         }
+
+        if (!openAiKey.isBlank()) {
+            log.info("Provedor de IA: OpenAI (modelo: {}, base-url: {})", openAiModel, openAiBaseUrl);
+            return OpenAiChatModel.builder()
+                    .apiKey(openAiKey)
+                    .modelName(openAiModel)
+                    .baseUrl(openAiBaseUrl)
+                    .temperature(0.3)
+                    .maxTokens(2048)
+                    .timeout(Duration.ofSeconds(60))
+                    .build();
+        }
+
+        log.warn("Nenhuma API key de IA configurada (GEMINI_API_KEY ou OPENAI_API_KEY). " +
+                 "Chamadas à IA falharão. Configure pelo menos uma das variáveis de ambiente.");
         return GoogleAiGeminiChatModel.builder()
-                .apiKey(key)
+                .apiKey("")
                 .modelName(geminiModel)
                 .temperature(0.3)
-                .maxOutputTokens(8192)
-                .timeout(Duration.ofSeconds(90))
+                .maxOutputTokens(2048)
+                .timeout(Duration.ofSeconds(60))
                 .build();
     }
 
     @Bean
     public EmbeddingModel embeddingModel() {
-        return new AllMiniLmL6V2EmbeddingModel(); 
+        return new AllMiniLmL6V2EmbeddingModel();
     }
 
-   
     @Bean
     @Profile("!test")
     public EmbeddingStore<TextSegment> embeddingStore(@Autowired(required = false) DataSource dataSource) {
@@ -68,6 +103,8 @@ public class AssistantConfig {
                     .datasource(dataSource)
                     .table("embeddings")
                     .dimension(384)
+                    .useIndex(true)
+                    .indexListSize(100)
                     .build();
         }
         return PgVectorEmbeddingStore.builder()
@@ -78,11 +115,11 @@ public class AssistantConfig {
                 .password(pgPassword)
                 .table("embeddings")
                 .dimension(384)
+                .useIndex(true)
+                .indexListSize(100)
                 .build();
     }
 
- 
- 
     @Bean
     @Profile("test")
     public EmbeddingStore<TextSegment> embeddingStoreInMemory() {
@@ -101,5 +138,9 @@ public class AssistantConfig {
         return AiServices.builder(ChatAiService.class)
                 .chatModel(model)
                 .build();
+    }
+
+    private String trim(String value) {
+        return value != null ? value.trim() : "";
     }
 }

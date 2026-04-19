@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -217,6 +218,9 @@ public class RequirementService {
     }
 
     private void addToEmbeddingStore(Requirement requirement) {
+        embeddingStore.removeAll(
+                MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
+        );
         String text = requirement.getRequirementId() + ": " + requirement.getRefinedRequirement();
         Metadata meta = Metadata.from(
                 java.util.Map.of(
@@ -226,6 +230,12 @@ public class RequirementService {
         TextSegment segment = TextSegment.from(text, meta);
         Embedding embedding = embeddingModel.embed(segment).content();
         embeddingStore.add(embedding, segment);
+    }
+
+    private void removeFromEmbeddingStore(Requirement requirement) {
+        embeddingStore.removeAll(
+                MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
+        );
     }
 
     @Transactional(readOnly = true)
@@ -296,6 +306,8 @@ public class RequirementService {
     public void deleteRequirement(@NonNull UUID requirementUuid) {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
                 .orElseThrow(() -> new ResourceNotFoundException("Requirement", requirementUuid));
+
+        removeFromEmbeddingStore(requirement);
 
         requirementHistoryRepository.deleteAll(
             requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(requirementUuid)
@@ -368,20 +380,9 @@ public class RequirementService {
     }
 
     private String generateNextRequirementId(@NonNull UUID requirementSetId) {
-        List<Requirement> existing = requirementRepository.findByRequirementSet_Id(Objects.requireNonNull(requirementSetId));
-        int maxNum = 0;
-        Pattern pattern = Pattern.compile("REQ-(\\d+)(?:-|$)", Pattern.CASE_INSENSITIVE);
-        for (Requirement r : existing) {
-            String id = r.getRequirementId();
-            if (id == null) continue;
-            Matcher m = pattern.matcher(id);
-            if (m.find()) {
-                try {
-                    int n = Integer.parseInt(m.group(1));
-                    if (n > maxNum) maxNum = n;
-                } catch (NumberFormatException ignored) {}
-            }
-        }
+        int maxNum = requirementRepository
+                .findMaxRequirementNumber(Objects.requireNonNull(requirementSetId))
+                .orElse(0);
         return String.format("REQ-%03d", maxNum + 1);
     }
 
@@ -505,19 +506,31 @@ public class RequirementService {
                 .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
 
         List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(requirementSetId);
-        List<RequirementReportDTO.RequirementReportItemDTO> itemsWithProblems = new ArrayList<>();
+        if (requirements.isEmpty()) {
+            return new RequirementReportDTO(requirementSetId, requirementSet.getName(), List.of());
+        }
 
         double similarityThreshold = 0.85;
+        String projectIdStr = requirementSetId.toString();
+
+        // Pré-computa todos os embeddings em paralelo (AllMiniLmL6V2 é thread-safe)
+        ConcurrentHashMap<UUID, Embedding> embeddingCache = new ConcurrentHashMap<>();
+        requirements.parallelStream().forEach(req -> {
+            String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
+            embeddingCache.put(req.getUuid(), embeddingModel.embed(queryText).content());
+        });
+
+        List<RequirementReportDTO.RequirementReportItemDTO> itemsWithProblems = new ArrayList<>();
 
         for (Requirement req : requirements) {
+            Embedding queryEmbedding = embeddingCache.get(req.getUuid());
             String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
-            Embedding queryEmbedding = embeddingModel.embed(queryText).content();
 
             EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                     .queryEmbedding(queryEmbedding)
                     .maxResults(20)
                     .minScore(similarityThreshold)
-                    .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(requirementSetId.toString()))
+                    .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectIdStr))
                     .build();
 
             EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
