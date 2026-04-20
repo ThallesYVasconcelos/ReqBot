@@ -24,5 +24,15 @@ COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Flags otimizadas para cold start rápido em Cloud Run (512Mi RAM):
+#   -XX:TieredStopAtLevel=1  — desliga compilação C2 no startup (JIT mais leve)
+#   -Xss256k                 — stack menor por thread (economiza memória)
+#   -XX:MaxRAMPercentage=75  — deixa 25% livre para o SO e ONNX
+#   -XX:+UseSerialGC         — GC leve para instâncias com 1 vCPU / pouca RAM
+ENTRYPOINT ["java", \
+  "-XX:TieredStopAtLevel=1", \
+  "-Xss256k", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseSerialGC", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
