@@ -3,6 +3,7 @@ package requirementsAssistantAI.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,8 +12,8 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "requirement_sets")
-public class RequirementSet {
+@Table(name = "workspaces")
+public class Workspace {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -21,8 +22,15 @@ public class RequirementSet {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private WorkspaceType type;
+
+    @Column(name = "owner_email", nullable = false)
+    private String ownerEmail;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -30,13 +38,11 @@ public class RequirementSet {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "workspace_id")
-    private Workspace workspace;
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<WorkspaceMember> members = new ArrayList<>();
 
-    @OneToMany(mappedBy = "requirementSet", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Requirement> requirements = new ArrayList<>();
-
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<RequirementSet> projects = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
@@ -49,26 +55,12 @@ public class RequirementSet {
         updatedAt = LocalDateTime.now();
     }
 
-    public RequirementSet() {
-    }
+    public Workspace() {}
 
-    public RequirementSet(String name, String description) {
+    public Workspace(String name, String description, WorkspaceType type, String ownerEmail) {
         this.name = name;
         this.description = description;
-    }
-
-    public RequirementSet(String name, String description, Workspace workspace) {
-        this.name = name;
-        this.description = description;
-        this.workspace = workspace;
-    }
-
-    public List<Requirement> getRequirements() {
-        return requirements;
-    }
-
-    public void setRequirements(List<Requirement> requirements) {
-        this.requirements = requirements;
+        this.type = type;
+        this.ownerEmail = ownerEmail;
     }
 }
-
