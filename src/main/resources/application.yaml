@@ -1,0 +1,4 @@
+# Configuração versionada: segredos vêm de variáveis de ambiente (Render, Docker, etc.)
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0

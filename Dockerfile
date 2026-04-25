@@ -8,16 +8,26 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 
-FROM eclipse-temurin:17-jre-alpine
+# Debian-based: ONNX Runtime (AllMiniLmL6V2) precisa de libstdc++.so.6
+# NÃO use a imagem Alpine (musl) — falha com libonnxruntime.so no Render/Cloud
+FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r spring && useradd -r -g spring spring
 USER spring:spring
 
 COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+  "-XX:TieredStopAtLevel=1", \
+  "-Xss256k", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseSerialGC", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
