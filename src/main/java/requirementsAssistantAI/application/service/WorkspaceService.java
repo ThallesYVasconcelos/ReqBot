@@ -2,23 +2,33 @@ package requirementsAssistantAI.application.service;
 
 import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
+import requirementsAssistantAI.domain.ChatMessage;
 import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.domain.WorkspaceMember;
 import requirementsAssistantAI.domain.WorkspaceRole;
 import requirementsAssistantAI.dto.AddMemberRequest;
 import requirementsAssistantAI.dto.ChatMessageDTO;
+import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
 import requirementsAssistantAI.dto.CreateWorkspaceRequest;
 import requirementsAssistantAI.dto.WorkspaceDTO;
 import requirementsAssistantAI.dto.WorkspaceMemberDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
 import requirementsAssistantAI.infrastructure.WorkspaceRepository;
+import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -28,13 +38,16 @@ public class WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository memberRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final EmbeddingModel embeddingModel;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository,
                             WorkspaceMemberRepository memberRepository,
-                            ChatMessageRepository chatMessageRepository) {
+                            ChatMessageRepository chatMessageRepository,
+                            EmbeddingModel embeddingModel) {
         this.workspaceRepository = workspaceRepository;
         this.memberRepository = memberRepository;
         this.chatMessageRepository = chatMessageRepository;
+        this.embeddingModel = embeddingModel;
     }
 
     @Transactional
@@ -129,6 +142,71 @@ public class WorkspaceService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<ChatQuestionClusterDTO> getAnonymousQuestionRanking(@NonNull UUID workspaceId,
+                                                                    @NonNull String requesterEmail,
+                                                                    int limit,
+                                                                    double similarityThreshold) {
+        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(workspaceId))
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
+        assertAdminOrOwner(workspace, requesterEmail);
+
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        double safeThreshold = Math.max(0.70, Math.min(similarityThreshold, 0.98));
+        List<ChatMessage> messages = chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
+                .stream()
+                .filter(cm -> cm.getQuestion() != null && !cm.getQuestion().isBlank())
+                .toList();
+
+        List<QuestionCluster> clusters = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            String normalizedQuestion = normalizeQuestionForAnalytics(message.getQuestion());
+            if (normalizedQuestion.isBlank()) {
+                continue;
+            }
+
+            Embedding embedding = embeddingModel.embed(normalizedQuestion).content();
+            float[] vector = embedding.vector();
+            QuestionCluster bestCluster = null;
+            double bestSimilarity = 0.0;
+
+            for (QuestionCluster cluster : clusters) {
+                double similarity = cosineSimilarity(vector, cluster.representativeVector);
+                if (similarity >= safeThreshold && similarity > bestSimilarity) {
+                    bestCluster = cluster;
+                    bestSimilarity = similarity;
+                }
+            }
+
+            if (bestCluster == null) {
+                clusters.add(new QuestionCluster(message.getQuestion(), vector, message.getAskedAt()));
+            } else {
+                bestCluster.add(message.getQuestion(), message.getAskedAt(), bestSimilarity);
+            }
+        }
+
+        clusters.sort(
+                Comparator.comparingInt(QuestionCluster::size).reversed()
+                        .thenComparing(QuestionCluster::lastAskedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+        );
+
+        List<ChatQuestionClusterDTO> ranking = new ArrayList<>();
+        for (int i = 0; i < Math.min(safeLimit, clusters.size()); i++) {
+            QuestionCluster cluster = clusters.get(i);
+            ranking.add(new ChatQuestionClusterDTO(
+                    i + 1,
+                    cluster.representativeQuestion,
+                    cluster.size(),
+                    cluster.sampleQuestions(),
+                    cluster.firstAskedAt,
+                    cluster.lastAskedAt,
+                    cluster.averageSimilarity(),
+                    safeThreshold
+            ));
+        }
+        return ranking;
+    }
+
     private void assertAccess(Workspace workspace, String email) {
         boolean isMember = workspace.getOwnerEmail().equals(email) ||
                 workspace.getMembers().stream().anyMatch(m -> m.getUserEmail().equals(email));
@@ -182,5 +260,84 @@ public class WorkspaceService {
                 cm.getWorkspace() != null ? cm.getWorkspace().getId() : null,
                 cm.getWorkspace() != null ? cm.getWorkspace().getName() : null
         );
+    }
+
+    private String normalizeQuestionForAnalytics(String question) {
+        String normalized = Normalizer.normalize(question, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized;
+    }
+
+    private double cosineSimilarity(float[] a, float[] b) {
+        if (a == null || b == null || a.length == 0 || a.length != b.length) {
+            return 0.0;
+        }
+        double dot = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+        for (int i = 0; i < a.length; i++) {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        if (normA == 0.0 || normB == 0.0) {
+            return 0.0;
+        }
+        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    private static class QuestionCluster {
+        private final String representativeQuestion;
+        private final float[] representativeVector;
+        private final List<String> questions = new ArrayList<>();
+        private LocalDateTime firstAskedAt;
+        private LocalDateTime lastAskedAt;
+        private double similaritySum;
+        private int similarityCount;
+
+        QuestionCluster(String representativeQuestion, float[] representativeVector, LocalDateTime askedAt) {
+            this.representativeQuestion = representativeQuestion;
+            this.representativeVector = representativeVector;
+            this.questions.add(representativeQuestion);
+            this.firstAskedAt = askedAt;
+            this.lastAskedAt = askedAt;
+            this.similaritySum = 1.0;
+            this.similarityCount = 1;
+        }
+
+        void add(String question, LocalDateTime askedAt, double similarity) {
+            questions.add(question);
+            if (askedAt != null && (firstAskedAt == null || askedAt.isBefore(firstAskedAt))) {
+                firstAskedAt = askedAt;
+            }
+            if (askedAt != null && (lastAskedAt == null || askedAt.isAfter(lastAskedAt))) {
+                lastAskedAt = askedAt;
+            }
+            similaritySum += similarity;
+            similarityCount++;
+        }
+
+        int size() {
+            return questions.size();
+        }
+
+        LocalDateTime lastAskedAt() {
+            return lastAskedAt;
+        }
+
+        double averageSimilarity() {
+            return similarityCount == 0 ? 0.0 : similaritySum / similarityCount;
+        }
+
+        List<String> sampleQuestions() {
+            Set<String> uniqueQuestions = new LinkedHashSet<>(questions);
+            return uniqueQuestions.stream()
+                    .limit(5)
+                    .toList();
+        }
     }
 }

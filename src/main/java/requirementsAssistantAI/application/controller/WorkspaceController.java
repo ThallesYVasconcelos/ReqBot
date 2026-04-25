@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import requirementsAssistantAI.application.service.WorkspaceService;
 import requirementsAssistantAI.dto.AddMemberRequest;
 import requirementsAssistantAI.dto.ChatMessageDTO;
+import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
 import requirementsAssistantAI.dto.CreateWorkspaceRequest;
 import requirementsAssistantAI.dto.WorkspaceDTO;
 import requirementsAssistantAI.dto.WorkspaceMemberDTO;
@@ -105,5 +106,18 @@ public class WorkspaceController {
             @AuthenticationPrincipal Jwt jwt) {
         String email = jwt.getClaimAsString("sub");
         return ResponseEntity.ok(workspaceService.getChatHistory(id, email));
+    }
+
+    @Operation(summary = "Ranking anônimo de perguntas similares do chat")
+    @GetMapping("/{id}/chat-question-ranking")
+    public ResponseEntity<List<ChatQuestionClusterDTO>> getChatQuestionRanking(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "0.82") double similarityThreshold,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("sub");
+        return ResponseEntity.ok(
+                workspaceService.getAnonymousQuestionRanking(id, email, limit, similarityThreshold)
+        );
     }
 }
