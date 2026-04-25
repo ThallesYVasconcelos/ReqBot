@@ -15,6 +15,7 @@ import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -56,8 +57,8 @@ public class ChatService {
             RequirementRepository requirementRepository,
             ChatMessageRepository chatMessageRepository,
             ChatAiService chatAiService,
-            EmbeddingModel embeddingModel,
-            EmbeddingStore<TextSegment> embeddingStore) {
+            @Lazy EmbeddingModel embeddingModel,
+            @Lazy EmbeddingStore<TextSegment> embeddingStore) {
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.requirementRepository = requirementRepository;
         this.chatMessageRepository = chatMessageRepository;

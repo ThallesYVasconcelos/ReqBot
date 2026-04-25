@@ -19,6 +19,7 @@ import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import requirementsAssistantAI.dto.SaveRequirementRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,8 +64,8 @@ public class RequirementService {
             RequirementRepository requirementRepository,
             RequirementSetRepository requirementSetRepository,
             RequirementHistoryRepository requirementHistoryRepository,
-            EmbeddingModel embeddingModel,
-            EmbeddingStore<TextSegment> embeddingStore) {
+            @Lazy EmbeddingModel embeddingModel,
+            @Lazy EmbeddingStore<TextSegment> embeddingStore) {
         this.assistantAiService = assistantAiService;
         this.requirementRepository = requirementRepository;
         this.requirementSetRepository = requirementSetRepository;

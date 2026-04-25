@@ -17,6 +17,7 @@ import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
 import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +44,7 @@ public class WorkspaceService {
     public WorkspaceService(WorkspaceRepository workspaceRepository,
                             WorkspaceMemberRepository memberRepository,
                             ChatMessageRepository chatMessageRepository,
-                            EmbeddingModel embeddingModel) {
+                            @Lazy EmbeddingModel embeddingModel) {
         this.workspaceRepository = workspaceRepository;
         this.memberRepository = memberRepository;
         this.chatMessageRepository = chatMessageRepository;
