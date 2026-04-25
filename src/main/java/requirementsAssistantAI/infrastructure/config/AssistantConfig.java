@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,28 +30,19 @@ public class AssistantConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AssistantConfig.class);
 
-    // Gemini
     @Value("${gemini.api.key:${gemini.api-key:}}") private String geminiApiKey;
     @Value("${gemini.model:gemini-2.5-flash}") private String geminiModel;
 
-    // OpenAI (fallback quando Gemini não estiver configurado)
     @Value("${openai.api.key:${openai.api-key:}}") private String openAiApiKey;
     @Value("${openai.model:gpt-4o-mini}") private String openAiModel;
     @Value("${openai.base-url:https://api.openai.com/v1}") private String openAiBaseUrl;
 
-    // PGVector
     @Value("${pgvector.host:localhost}") private String pgHost;
     @Value("${pgvector.port:5432}") private int pgPort;
     @Value("${pgvector.database:postgres}") private String pgDatabase;
     @Value("${pgvector.user:postgres}") private String pgUser;
     @Value("${pgvector.password:}") private String pgPassword;
 
-    /**
-     * Seleciona o modelo de LLM automaticamente:
-     * 1. Gemini (padrão) — se GEMINI_API_KEY estiver configurada
-     * 2. OpenAI (fallback) — se apenas OPENAI_API_KEY estiver configurada
-     * Se nenhuma estiver configurada, usa Gemini com chave vazia e loga aviso.
-     */
     @Bean
     public ChatModel chatModel() {
         String geminiKey = trim(geminiApiKey);
@@ -91,12 +83,14 @@ public class AssistantConfig {
     }
 
     @Bean
+    @Lazy
     public EmbeddingModel embeddingModel() {
         return new AllMiniLmL6V2EmbeddingModel();
     }
 
     @Bean
     @Profile("!test")
+    @Lazy
     public EmbeddingStore<TextSegment> embeddingStore(@Autowired(required = false) DataSource dataSource) {
         if (dataSource != null) {
             return PgVectorEmbeddingStore.datasourceBuilder()

@@ -8,8 +8,6 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 
-# Debian-based: ONNX Runtime (AllMiniLmL6V2) precisa de libstdc++.so.6
-# NÃO use a imagem Alpine (musl) — falha com libonnxruntime.so no Render/Cloud
 FROM eclipse-temurin:17-jre
 
 WORKDIR /app
@@ -26,8 +24,9 @@ EXPOSE 8080
 
 ENTRYPOINT ["java", \
   "-XX:TieredStopAtLevel=1", \
-  "-Xss256k", \
-  "-XX:MaxRAMPercentage=75.0", \
+  "-Xss128k", \
+  "-XX:MaxRAMPercentage=50.0", \
+  "-XX:MaxMetaspaceSize=100m", \
   "-XX:+UseSerialGC", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-jar", "app.jar"]

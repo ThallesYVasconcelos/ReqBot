@@ -1,4 +1,9 @@
-# Configuração versionada: segredos vêm de variáveis de ambiente (Render, Docker, etc.)
 server:
   port: ${PORT:8080}
   address: 0.0.0.0
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 0
