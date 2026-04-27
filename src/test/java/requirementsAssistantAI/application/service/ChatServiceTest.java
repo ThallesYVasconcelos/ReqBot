@@ -16,6 +16,8 @@ import requirementsAssistantAI.dto.ChatResponseDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -45,13 +47,18 @@ class ChatServiceTest {
         @SuppressWarnings("unchecked")
         EmbeddingStore<TextSegment> embeddingStore = mock(EmbeddingStore.class);
 
+        WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
+        WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
+
         chatService = new ChatService(
                 chatbotConfigRepository,
                 requirementRepository,
                 chatMessageRepository,
                 chatAiService,
                 embeddingModel,
-                embeddingStore
+                embeddingStore,
+                workspaceRepository,
+                workspaceMemberRepository
         );
     }
 

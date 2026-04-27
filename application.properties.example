@@ -19,6 +19,14 @@ gemini.api-key=SUA_GEMINI_API_KEY_AQUI
 # Modelos disponíveis: gemini-2.5-flash (rápido), gemini-2.5-pro (mais capaz)
 gemini.model=gemini-2.5-flash
 
+# --- Embeddings (Gemini API — usa a MESMA gemini.api-key / GEMINI_API_KEY) ---
+# RAG, relatório de conflitos e ranking de perguntas chamam a API de embedding (sem ONNX local).
+# A tabela Postgres "embeddings.embedding" deve ser vector(768). Novos deploys: schema já 768.
+# Bases antigas (384): rode a migração supabase/migrations/20250427120000_embeddings_vector_768_gemini.sql
+# Se usar só OpenAI para chat, ainda precisa de GEMINI_API_KEY para embeddings OU ajuste o código.
+ai.embedding.model=gemini-embedding-001
+ai.embedding.dimension=768
+
 # --- OpenAI (fallback — usado quando GEMINI_API_KEY não está configurada) ---
 # Obtenha em: https://platform.openai.com/api-keys
 # Deixe em branco para não usar OpenAI.

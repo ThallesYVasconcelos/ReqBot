@@ -203,7 +203,7 @@ docker compose -f docker/docker-compose.yml up -d
 ```
 **Requisitos gerais:**
 - Porta configurável via `PORT` (padrão 8080)
-- Memória mínima recomendada: 2Gi (modelo ONNX para embeddings)
+- Memória: embeddings via API Gemini (sem ONNX); ~512Mi pode bastar para instâncias pequenas; reserve mais se houver muitos utilizadores em paralelo
 - Conectividade com PostgreSQL (banco com PGVector)
 
 ### Variáveis de ambiente em produção

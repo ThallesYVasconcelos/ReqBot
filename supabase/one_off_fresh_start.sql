@@ -112,7 +112,7 @@ CREATE INDEX idx_chatbot_config_requirement_set_id ON chatbot_config(requirement
 
 CREATE TABLE embeddings (
     embedding_id UUID PRIMARY KEY,
-    embedding vector(384),
+    embedding vector(768),
     text TEXT,
     metadata JSON
 );

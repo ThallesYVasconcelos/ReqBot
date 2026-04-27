@@ -100,10 +100,10 @@ CREATE TABLE IF NOT EXISTS chatbot_config (
 
 CREATE INDEX IF NOT EXISTS idx_chatbot_config_requirement_set_id ON chatbot_config(requirement_set_id);
 
--- 9. Tabela embeddings (LangChain4j PGVector — AllMiniLmL6V2, dimensão 384)
+-- 9. Tabela embeddings (LangChain4j PGVector — Gemini API, dimensão 768)
 CREATE TABLE IF NOT EXISTS embeddings (
     embedding_id UUID PRIMARY KEY,
-    embedding vector(384),
+    embedding vector(768),
     text TEXT,
     metadata JSON
 );

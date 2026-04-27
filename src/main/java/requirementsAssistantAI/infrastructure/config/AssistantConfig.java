@@ -3,7 +3,7 @@ package requirementsAssistantAI.infrastructure.config;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.googleai.GoogleAiEmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
@@ -36,6 +36,9 @@ public class AssistantConfig {
     @Value("${openai.api.key:${openai.api-key:}}") private String openAiApiKey;
     @Value("${openai.model:gpt-4o-mini}") private String openAiModel;
     @Value("${openai.base-url:https://api.openai.com/v1}") private String openAiBaseUrl;
+
+    @Value("${ai.embedding.model:gemini-embedding-001}") private String embeddingModelName;
+    @Value("${ai.embedding.dimension:768}") private int embeddingDimension;
 
     @Value("${pgvector.host:localhost}") private String pgHost;
     @Value("${pgvector.port:5432}") private int pgPort;
@@ -85,7 +88,22 @@ public class AssistantConfig {
     @Bean
     @Lazy
     public EmbeddingModel embeddingModel() {
-        return new AllMiniLmL6V2EmbeddingModel();
+        String geminiKey = trim(geminiApiKey);
+        if (geminiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "GEMINI_API_KEY (ou gemini.api-key) é obrigatória para embeddings via API Gemini. " +
+                    "Obtenha uma chave em https://aistudio.google.com/apikey e aplique a migração SQL " +
+                    "supabase/migrations/20250427120000_embeddings_vector_768_gemini.sql no Postgres " +
+                    "(coluna embeddings.embedding deve ser vector(" + embeddingDimension + ")).");
+        }
+        log.info("Embeddings: Gemini API (modelo: {}, dimensão: {})", embeddingModelName, embeddingDimension);
+        return GoogleAiEmbeddingModel.builder()
+                .apiKey(geminiKey)
+                .modelName(embeddingModelName)
+                .outputDimensionality(embeddingDimension)
+                .taskType(GoogleAiEmbeddingModel.TaskType.SEMANTIC_SIMILARITY)
+                .timeout(Duration.ofSeconds(60))
+                .build();
     }
 
     @Bean
@@ -96,7 +114,7 @@ public class AssistantConfig {
             return PgVectorEmbeddingStore.datasourceBuilder()
                     .datasource(dataSource)
                     .table("embeddings")
-                    .dimension(384)
+                    .dimension(embeddingDimension)
                     .useIndex(true)
                     .indexListSize(100)
                     .build();
@@ -108,7 +126,7 @@ public class AssistantConfig {
                 .user(pgUser)
                 .password(pgPassword)
                 .table("embeddings")
-                .dimension(384)
+                .dimension(embeddingDimension)
                 .useIndex(true)
                 .indexListSize(100)
                 .build();
