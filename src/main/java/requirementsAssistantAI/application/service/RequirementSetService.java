@@ -1,12 +1,18 @@
 package requirementsAssistantAI.application.service;
 
+import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.domain.Requirement;
 import requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.domain.Workspace;
+import requirementsAssistantAI.domain.WorkspaceMember;
+import requirementsAssistantAI.domain.WorkspaceRole;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementHistoryRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
 import requirementsAssistantAI.infrastructure.RequirementSetRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import requirementsAssistantAI.dto.RequirementSetDTO;
 import requirementsAssistantAI.dto.RequirementSummaryDTO;
 import org.springframework.lang.NonNull;
@@ -25,27 +31,57 @@ public class RequirementSetService {
     private final RequirementRepository requirementRepository;
     private final RequirementHistoryRepository requirementHistoryRepository;
     private final ChatbotConfigRepository chatbotConfigRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final WorkspaceMemberRepository workspaceMemberRepository;
 
     public RequirementSetService(
             RequirementSetRepository requirementSetRepository,
             RequirementRepository requirementRepository,
             RequirementHistoryRepository requirementHistoryRepository,
-            ChatbotConfigRepository chatbotConfigRepository) {
+            ChatbotConfigRepository chatbotConfigRepository,
+            WorkspaceRepository workspaceRepository,
+            WorkspaceMemberRepository workspaceMemberRepository) {
         this.requirementSetRepository = requirementSetRepository;
         this.requirementRepository = requirementRepository;
         this.requirementHistoryRepository = requirementHistoryRepository;
         this.chatbotConfigRepository = chatbotConfigRepository;
+        this.workspaceRepository = workspaceRepository;
+        this.workspaceMemberRepository = workspaceMemberRepository;
     }
 
     @Transactional
-    public RequirementSetDTO createRequirementSet(String name,String description) {
+    public RequirementSetDTO createRequirementSet(String name, String description) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("O nome do RequirementSet não pode ser vazio");
         }
-
-        RequirementSet requirementSet = new RequirementSet(name.trim(),description);
+        RequirementSet requirementSet = new RequirementSet(name.trim(), description);
         requirementSet = requirementSetRepository.save(requirementSet);
         return convertToDTO(requirementSet);
+    }
+
+    @Transactional
+    public RequirementSetDTO createRequirementSetInWorkspace(@NonNull UUID workspaceId, String name, String description, @NonNull String requesterEmail) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("O nome do RequirementSet não pode ser vazio");
+        }
+        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
+        assertAdminOrOwner(workspace, requesterEmail);
+
+        RequirementSet requirementSet = new RequirementSet(name.trim(), description, workspace);
+        requirementSet = requirementSetRepository.save(requirementSet);
+        return convertToDTO(requirementSet);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RequirementSetDTO> getRequirementSetsByWorkspace(@NonNull UUID workspaceId, @NonNull String requesterEmail) {
+        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
+        assertAccess(workspace, requesterEmail);
+
+        return requirementSetRepository.findByWorkspace_Id(workspaceId).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +123,20 @@ public class RequirementSetService {
         return requirementRepository.findByRequirementSet_Id(requirementSetId).stream()
                 .map(this::convertToSummaryDTO)
                 .collect(Collectors.toList());
+    }
+
+    private void assertAdminOrOwner(Workspace workspace, String email) {
+        boolean allowed = workspace.getOwnerEmail().equals(email) ||
+                workspace.getMembers().stream().anyMatch(m ->
+                        m.getUserEmail().equals(email) &&
+                        (m.getRole() == WorkspaceRole.ADMIN || m.getRole() == WorkspaceRole.OWNER));
+        if (!allowed) throw new ForbiddenException("Apenas admins ou o dono podem gerenciar projetos neste workspace.");
+    }
+
+    private void assertAccess(Workspace workspace, String email) {
+        boolean isMember = workspace.getOwnerEmail().equals(email) ||
+                workspace.getMembers().stream().anyMatch(m -> m.getUserEmail().equals(email));
+        if (!isMember) throw new ForbiddenException("Acesso negado a este workspace.");
     }
 
     private RequirementSetDTO convertToDTO(RequirementSet requirementSet) {

@@ -1,6 +1,7 @@
 package requirementsAssistantAI.domain;
 
 import jakarta.persistence.*;
+import requirementsAssistantAI.domain.Workspace;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -20,6 +21,10 @@ public class ChatbotConfig {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requirement_set_id", nullable = false)
     private RequirementSet requirementSet;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "workspace_id")
+    private Workspace workspace;
 
     @Column(name = "start_time")
     private LocalTime startTime;
@@ -55,10 +60,14 @@ public class ChatbotConfig {
 
     public ChatbotConfig(RequirementSet requirementSet, LocalTime startTime, LocalTime endTime) {
         this.requirementSet = requirementSet;
+        this.workspace = requirementSet != null ? requirementSet.getWorkspace() : null;
         this.startTime = startTime;
         this.endTime = endTime;
         this.isActive = true;
     }
+
+    public Workspace getWorkspace() { return workspace; }
+    public void setWorkspace(Workspace workspace) { this.workspace = workspace; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }

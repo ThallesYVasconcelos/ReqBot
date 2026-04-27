@@ -2,8 +2,10 @@ package requirementsAssistantAI.application.service;
 
 import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.domain.RequirementSet;
+import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementSetRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import jakarta.validation.Valid;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.dto.ChatbotConfigDTO;
 import requirementsAssistantAI.dto.CreateChatbotConfigRequest;
@@ -23,24 +26,37 @@ public class ChatbotConfigService {
 
     private final ChatbotConfigRepository chatbotConfigRepository;
     private final RequirementSetRepository requirementSetRepository;
+    private final WorkspaceRepository workspaceRepository;
 
     public ChatbotConfigService(
             ChatbotConfigRepository chatbotConfigRepository,
-            RequirementSetRepository requirementSetRepository) {
+            RequirementSetRepository requirementSetRepository,
+            WorkspaceRepository workspaceRepository) {
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.requirementSetRepository = requirementSetRepository;
+        this.workspaceRepository = workspaceRepository;
     }
 
     @Transactional
     public ChatbotConfigDTO createOrUpdateConfig(@Valid CreateChatbotConfigRequest request) {
-        chatbotConfigRepository.findByIsActiveTrue().ifPresent(config -> {
-            config.setIsActive(false);
-            chatbotConfigRepository.save(config);
-        });
-
         RequirementSet requirementSet = requirementSetRepository.findById(
                 Objects.requireNonNull(request.getRequirementSetId()))
                 .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", request.getRequirementSetId()));
+
+        Workspace workspace = requirementSet.getWorkspace();
+
+        if (workspace != null) {
+            chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspace.getId())
+                    .ifPresent(existing -> {
+                        existing.setIsActive(false);
+                        chatbotConfigRepository.save(existing);
+                    });
+        } else {
+            chatbotConfigRepository.findByIsActiveTrue().ifPresent(existing -> {
+                existing.setIsActive(false);
+                chatbotConfigRepository.save(existing);
+            });
+        }
 
         ChatbotConfig config = new ChatbotConfig(
                 requirementSet,
@@ -51,6 +67,20 @@ public class ChatbotConfigService {
         config.setShowRequirementsToUsers(Boolean.TRUE.equals(request.getShowRequirementsToUsers()));
         config = chatbotConfigRepository.save(config);
         return convertToDTO(config);
+    }
+
+    @Transactional(readOnly = true)
+    public ChatbotConfigDTO getActiveConfigByWorkspace(UUID workspaceId) {
+        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspaceId)
+                .orElseThrow(() -> new RuntimeException("Nenhuma configuração de chatbot ativa para este workspace"));
+        return convertToDTO(config);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatbotConfigDTO> getConfigsByWorkspace(UUID workspaceId) {
+        return chatbotConfigRepository.findAllByWorkspace_Id(workspaceId).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -104,11 +134,14 @@ public class ChatbotConfigService {
 
     private ChatbotConfigDTO convertToDTO(ChatbotConfig config) {
         RequirementSet requirementSet = config.getRequirementSet();
+        Workspace workspace = config.getWorkspace();
         return new ChatbotConfigDTO(
                 config.getId(),
                 config.getIsActive(),
                 requirementSet != null ? requirementSet.getId() : null,
                 requirementSet != null ? requirementSet.getName() : null,
+                workspace != null ? workspace.getId() : null,
+                workspace != null ? workspace.getName() : null,
                 config.getStartTime(),
                 config.getEndTime(),
                 config.getShowRequirementsToUsers(),

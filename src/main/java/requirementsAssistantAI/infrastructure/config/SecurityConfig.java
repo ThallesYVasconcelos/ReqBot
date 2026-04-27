@@ -66,11 +66,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Admin: gerencia requirements, projects, chatbot config
+                        // Admin global: gerencia chatbot config legado
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/chatbot/**").authenticated()
-                        .requestMatchers("/api/user/**").authenticated()
-                        // Requirements: apenas ADMIN pode criar/editar/aprovar; USER autenticado pode listar
+                        // Workspaces: só ADMIN cria; aluno pode fazer JOIN e listar os seus
+                        .requestMatchers(HttpMethod.POST, "/api/workspaces").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/workspaces/join").authenticated()
+                        .requestMatchers("/api/workspaces/**").authenticated()
+                        // Chat por workspace: qualquer membro autenticado
+                        .requestMatchers("/api/workspaces/*/chat/**").authenticated()
+                        // Requirements: só ADMIN cria/edita; autenticado pode listar
                         .requestMatchers(HttpMethod.POST, "/api/requirements").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requirements/refine").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requirements/save").hasRole("ADMIN")
@@ -78,9 +82,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").hasRole("ADMIN")
                         .requestMatchers("/api/requirements/*/history").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requirements/**").authenticated()
+                        // RequirementSets por workspace — todo controlo é no service via ownerEmail
+                        .requestMatchers("/api/workspaces/*/requirement-sets/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/requirement-sets").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requirement-sets/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requirement-sets/**").authenticated()
+                        .requestMatchers("/api/user/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions

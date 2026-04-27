@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/chatbot")
+@RequestMapping("/api/workspaces/{workspaceId}/chat")
+@SecurityRequirement(name = "bearerAuth")
 public class ChatbotController {
 
     private final ChatService chatService;
@@ -26,31 +27,31 @@ public class ChatbotController {
         this.chatService = chatService;
     }
 
-    @Operation(summary = "Enviar pergunta ao chatbot (autenticado — histórico é salvo)")
-    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Enviar pergunta ao chatbot do workspace (membro autenticado)")
     @PostMapping("/ask")
     public ResponseEntity<ChatResponseDTO> askQuestion(
+            @PathVariable UUID workspaceId,
             @Valid @RequestBody ChatQuestionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        String userEmail = jwt != null ? jwt.getClaimAsString("sub") : null;
-        ChatResponseDTO response = chatService.answerQuestion(request.getQuestion(), userEmail);
-        return ResponseEntity.ok(response);
+        String userEmail = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(chatService.answerQuestion(request.getQuestion(), userEmail, workspaceId));
     }
 
-    @Operation(summary = "Histórico de perguntas do chatbot por projeto")
-    @SecurityRequirement(name = "bearerAuth")
-    @GetMapping("/history/project/{requirementSetId}")
-    public ResponseEntity<List<ChatMessageDTO>> getHistoryByProject(
-            @PathVariable UUID requirementSetId) {
-        return ResponseEntity.ok(chatService.getChatHistoryByProject(requirementSetId));
-    }
-
-    @Operation(summary = "Histórico de perguntas do usuário autenticado")
-    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Histórico de perguntas do usuário autenticado neste workspace")
     @GetMapping("/history/me")
     public ResponseEntity<List<ChatMessageDTO>> getMyHistory(
+            @PathVariable UUID workspaceId,
             @AuthenticationPrincipal Jwt jwt) {
-        String userEmail = jwt.getClaimAsString("sub");
-        return ResponseEntity.ok(chatService.getChatHistoryByUser(userEmail));
+        String userEmail = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(chatService.getChatHistoryByUserAndWorkspace(userEmail, workspaceId));
+    }
+
+    @Operation(summary = "Histórico completo do workspace (admin/owner)")
+    @GetMapping("/history")
+    public ResponseEntity<List<ChatMessageDTO>> getWorkspaceHistory(
+            @PathVariable UUID workspaceId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userEmail = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(chatService.getChatHistoryByWorkspace(userEmail, workspaceId));
     }
 }

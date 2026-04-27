@@ -13,13 +13,19 @@ import java.util.UUID;
 @Repository
 public interface ChatbotConfigRepository extends JpaRepository<ChatbotConfig, UUID> {
     Optional<ChatbotConfig> findByIsActiveTrue();
-    
+
     @Query("SELECT c FROM ChatbotConfig c LEFT JOIN FETCH c.requirementSet WHERE c.isActive = true")
     Optional<ChatbotConfig> findByIsActiveTrueWithRequirementSet();
-    
+
+    @Query("SELECT c FROM ChatbotConfig c LEFT JOIN FETCH c.requirementSet WHERE c.isActive = true AND c.workspace.id = :workspaceId")
+    Optional<ChatbotConfig> findByIsActiveTrueAndWorkspace_Id(@Param("workspaceId") UUID workspaceId);
+
     @Query("SELECT c FROM ChatbotConfig c LEFT JOIN FETCH c.requirementSet")
     List<ChatbotConfig> findAllWithRequirementSet();
-    
+
+    @Query("SELECT c FROM ChatbotConfig c LEFT JOIN FETCH c.requirementSet WHERE c.workspace.id = :workspaceId")
+    List<ChatbotConfig> findAllByWorkspace_Id(@Param("workspaceId") UUID workspaceId);
+
     @Query("SELECT c FROM ChatbotConfig c LEFT JOIN FETCH c.requirementSet WHERE c.id = :id")
     Optional<ChatbotConfig> findByIdWithRequirementSet(@Param("id") UUID id);
 

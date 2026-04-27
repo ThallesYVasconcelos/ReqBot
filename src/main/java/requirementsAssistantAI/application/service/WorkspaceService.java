@@ -32,6 +32,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class WorkspaceService {
@@ -59,12 +60,27 @@ public class WorkspaceService {
                 request.type(),
                 ownerEmail
         );
+        workspace.setInviteCode(generateInviteCode());
         workspace = workspaceRepository.save(workspace);
 
         WorkspaceMember ownerMember = new WorkspaceMember(workspace, ownerEmail, WorkspaceRole.OWNER);
         memberRepository.save(ownerMember);
 
         return toDTO(workspace, List.of(ownerMember));
+    }
+
+    @Transactional
+    public WorkspaceDTO joinByInviteCode(@NonNull String code, @NonNull String userEmail) {
+        Workspace workspace = workspaceRepository.findByInviteCode(code)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace com código", code));
+
+        if (!memberRepository.existsByWorkspace_IdAndUserEmail(workspace.getId(), userEmail)) {
+            WorkspaceMember member = new WorkspaceMember(workspace, userEmail, WorkspaceRole.MEMBER);
+            memberRepository.save(member);
+        }
+
+        List<WorkspaceMember> members = memberRepository.findByWorkspace_Id(workspace.getId());
+        return toDTO(workspace, members);
     }
 
     @Transactional(readOnly = true)
@@ -208,6 +224,27 @@ public class WorkspaceService {
         return ranking;
     }
 
+    public void assertAdminOrOwnerById(@NonNull UUID workspaceId, @NonNull String email) {
+        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
+        assertAdminOrOwner(workspace, email);
+    }
+
+    public void assertMemberById(@NonNull UUID workspaceId, @NonNull String email) {
+        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
+        assertAccess(workspace, email);
+    }
+
+    private String generateInviteCode() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        StringBuilder sb = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            sb.append(chars.charAt(ThreadLocalRandom.current().nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+
     private void assertAccess(Workspace workspace, String email) {
         boolean isMember = workspace.getOwnerEmail().equals(email) ||
                 workspace.getMembers().stream().anyMatch(m -> m.getUserEmail().equals(email));
@@ -237,6 +274,7 @@ public class WorkspaceService {
                 workspace.getDescription(),
                 workspace.getType(),
                 workspace.getOwnerEmail(),
+                workspace.getInviteCode(),
                 memberDTOs,
                 workspace.getCreatedAt(),
                 workspace.getUpdatedAt()

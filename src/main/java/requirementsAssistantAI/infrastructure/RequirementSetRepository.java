@@ -8,5 +8,7 @@ import java.util.UUID;
 
 @Repository
 public interface RequirementSetRepository extends JpaRepository<RequirementSet, UUID> {
+
+    java.util.List<RequirementSet> findByWorkspace_Id(UUID workspaceId);
 }
 

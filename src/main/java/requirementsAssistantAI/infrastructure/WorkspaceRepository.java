@@ -22,4 +22,6 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     List<Workspace> findAllAccessibleByEmail(@Param("email") String email);
 
     List<Workspace> findByOwnerEmail(String ownerEmail);
+
+    java.util.Optional<Workspace> findByInviteCode(String inviteCode);
 }

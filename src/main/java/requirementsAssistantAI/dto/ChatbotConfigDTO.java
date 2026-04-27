@@ -14,6 +14,8 @@ public class ChatbotConfigDTO {
     private Boolean isActive;
     private UUID requirementSetId;
     private String requirementSetName;
+    private UUID workspaceId;
+    private String workspaceName;
     private LocalTime startTime;
     private LocalTime endTime;
     private Boolean showRequirementsToUsers = false;
@@ -25,12 +27,15 @@ public class ChatbotConfigDTO {
     }
 
     public ChatbotConfigDTO(UUID id, Boolean isActive, UUID requirementSetId, String requirementSetName,
-                           LocalTime startTime, LocalTime endTime, Boolean showRequirementsToUsers,
-                           LocalDateTime createdAt, LocalDateTime updatedAt, Boolean availableNow) {
+                            UUID workspaceId, String workspaceName,
+                            LocalTime startTime, LocalTime endTime, Boolean showRequirementsToUsers,
+                            LocalDateTime createdAt, LocalDateTime updatedAt, Boolean availableNow) {
         this.id = id;
         this.isActive = isActive;
         this.requirementSetId = requirementSetId;
         this.requirementSetName = requirementSetName;
+        this.workspaceId = workspaceId;
+        this.workspaceName = workspaceName;
         this.startTime = startTime;
         this.endTime = endTime;
         this.showRequirementsToUsers = Boolean.TRUE.equals(showRequirementsToUsers);

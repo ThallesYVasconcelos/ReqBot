@@ -9,11 +9,17 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import requirementsAssistantAI.application.service.ChatbotConfigService;
+import requirementsAssistantAI.application.service.RequirementSetService;
 import requirementsAssistantAI.application.service.WorkspaceService;
 import requirementsAssistantAI.dto.AddMemberRequest;
 import requirementsAssistantAI.dto.ChatMessageDTO;
 import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
+import requirementsAssistantAI.dto.ChatbotConfigDTO;
+import requirementsAssistantAI.dto.CreateChatbotConfigRequest;
+import requirementsAssistantAI.dto.CreateRequirementSetRequest;
 import requirementsAssistantAI.dto.CreateWorkspaceRequest;
+import requirementsAssistantAI.dto.RequirementSetDTO;
 import requirementsAssistantAI.dto.WorkspaceDTO;
 import requirementsAssistantAI.dto.WorkspaceMemberDTO;
 
@@ -26,17 +32,25 @@ import java.util.UUID;
 public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
+    private final RequirementSetService requirementSetService;
+    private final ChatbotConfigService chatbotConfigService;
 
-    public WorkspaceController(WorkspaceService workspaceService) {
+    public WorkspaceController(WorkspaceService workspaceService,
+                               RequirementSetService requirementSetService,
+                               ChatbotConfigService chatbotConfigService) {
         this.workspaceService = workspaceService;
+        this.requirementSetService = requirementSetService;
+        this.chatbotConfigService = chatbotConfigService;
     }
 
-    @Operation(summary = "Criar workspace (PROFESSIONAL ou ACADEMIC)")
+    // ── Workspace CRUD ──────────────────────────────────────────────────────
+
+    @Operation(summary = "Criar workspace — somente ADMIN")
     @PostMapping
     public ResponseEntity<WorkspaceDTO> create(
             @Valid @RequestBody CreateWorkspaceRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         WorkspaceDTO dto = workspaceService.createWorkspace(request, email);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
@@ -44,7 +58,7 @@ public class WorkspaceController {
     @Operation(summary = "Listar workspaces acessíveis pelo usuário autenticado")
     @GetMapping
     public ResponseEntity<List<WorkspaceDTO>> listMine(@AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         return ResponseEntity.ok(workspaceService.getMyWorkspaces(email));
     }
 
@@ -53,7 +67,7 @@ public class WorkspaceController {
     public ResponseEntity<WorkspaceDTO> getById(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         return ResponseEntity.ok(workspaceService.getById(id, email));
     }
 
@@ -63,7 +77,7 @@ public class WorkspaceController {
             @PathVariable UUID id,
             @Valid @RequestBody CreateWorkspaceRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         return ResponseEntity.ok(workspaceService.updateWorkspace(id, request, email));
     }
 
@@ -72,18 +86,20 @@ public class WorkspaceController {
     public ResponseEntity<Void> delete(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         workspaceService.deleteWorkspace(id, email);
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Adicionar membro ao workspace")
+    // ── Membros ──────────────────────────────────────────────────────────────
+
+    @Operation(summary = "Adicionar membro ao workspace por email")
     @PostMapping("/{id}/members")
     public ResponseEntity<WorkspaceMemberDTO> addMember(
             @PathVariable UUID id,
             @Valid @RequestBody AddMemberRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         WorkspaceMemberDTO dto = workspaceService.addMember(id, request, email);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
@@ -94,17 +110,84 @@ public class WorkspaceController {
             @PathVariable UUID id,
             @PathVariable String memberEmail,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         workspaceService.removeMember(id, memberEmail, email);
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Histórico de perguntas do chat neste workspace")
+    @Operation(summary = "Aluno entra no workspace com código de convite")
+    @PostMapping("/join")
+    public ResponseEntity<WorkspaceDTO> joinByCode(
+            @RequestParam String code,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(workspaceService.joinByInviteCode(code, email));
+    }
+
+    // ── Projetos (RequirementSets) por workspace ──────────────────────────────
+
+    @Operation(summary = "Criar projeto (RequirementSet) dentro de um workspace — admin/owner")
+    @PostMapping("/{id}/requirement-sets")
+    public ResponseEntity<RequirementSetDTO> createProject(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreateRequirementSetRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(requirementSetService.createRequirementSetInWorkspace(id, request.getName(), request.getDescription(), email));
+    }
+
+    @Operation(summary = "Listar projetos do workspace")
+    @GetMapping("/{id}/requirement-sets")
+    public ResponseEntity<List<RequirementSetDTO>> listProjects(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(requirementSetService.getRequirementSetsByWorkspace(id, email));
+    }
+
+    // ── Chatbot config por workspace ─────────────────────────────────────────
+
+    @Operation(summary = "Criar/atualizar config do chatbot no workspace — admin/owner")
+    @PostMapping("/{id}/chatbot/config")
+    public ResponseEntity<ChatbotConfigDTO> createChatbotConfig(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreateChatbotConfigRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        workspaceService.assertAdminOrOwnerById(id, email);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(chatbotConfigService.createOrUpdateConfig(request));
+    }
+
+    @Operation(summary = "Config ativa do chatbot no workspace")
+    @GetMapping("/{id}/chatbot/config/active")
+    public ResponseEntity<ChatbotConfigDTO> getActiveChatbotConfig(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        workspaceService.assertMemberById(id, email);
+        return ResponseEntity.ok(chatbotConfigService.getActiveConfigByWorkspace(id));
+    }
+
+    @Operation(summary = "Listar todas as configs do chatbot no workspace — admin/owner")
+    @GetMapping("/{id}/chatbot/config")
+    public ResponseEntity<List<ChatbotConfigDTO>> listChatbotConfigs(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        workspaceService.assertAdminOrOwnerById(id, email);
+        return ResponseEntity.ok(chatbotConfigService.getConfigsByWorkspace(id));
+    }
+
+    // ── Histórico e ranking ──────────────────────────────────────────────────
+
+    @Operation(summary = "Histórico de perguntas do chat neste workspace (admin/owner)")
     @GetMapping("/{id}/chat-history")
     public ResponseEntity<List<ChatMessageDTO>> getChatHistory(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         return ResponseEntity.ok(workspaceService.getChatHistory(id, email));
     }
 
@@ -115,7 +198,7 @@ public class WorkspaceController {
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(defaultValue = "0.82") double similarityThreshold,
             @AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("sub");
+        String email = jwt.getClaimAsString("email");
         return ResponseEntity.ok(
                 workspaceService.getAnonymousQuestionRanking(id, email, limit, similarityThreshold)
         );

@@ -27,4 +27,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
 
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.workspace.id = :workspaceId")
     long countByWorkspaceId(@Param("workspaceId") UUID workspaceId);
+
+    @Query("SELECT cm FROM ChatMessage cm WHERE cm.userEmail = :email AND cm.workspace.id = :workspaceId ORDER BY cm.askedAt DESC")
+    List<ChatMessage> findByUserEmailAndWorkspaceId(@Param("email") String email, @Param("workspaceId") UUID workspaceId);
 }

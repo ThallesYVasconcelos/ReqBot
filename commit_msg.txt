@@ -1,0 +1,13 @@
+feat: multi-tenant workspace — JWT fix, invite code, chat/config/project por workspace
+
+- Corrige bug JWT: todos os controllers passam a ler claim 'email' em vez de 'sub'
+- SecurityConfig: POST /api/workspaces restrito a ROLE_ADMIN
+- Workspace.inviteCode gerado na criacao; aluno entra via POST /api/workspaces/join?code=
+- ChatbotController reescrito para /api/workspaces/{id}/chat/{ask,history/me,history}
+- WorkspaceController: novos endpoints para requirement-sets e chatbot config por workspace
+- RequirementSetService: createRequirementSetInWorkspace + getRequirementSetsByWorkspace
+- ChatbotConfigService: getActiveConfigByWorkspace + getConfigsByWorkspace
+- ChatbotConfig.workspace_id: FK para workspace derivada do requirement_set
+- ChatService: answerQuestion(workspaceId), getChatHistoryByUserAndWorkspace, getChatHistoryByWorkspace
+- WorkspaceService: joinByInviteCode, assertAdminOrOwnerById, assertMemberById expostos
+- Migration Supabase: invite_code em workspaces + workspace_id em chatbot_config
