@@ -219,24 +219,35 @@ public class RequirementService {
     }
 
     private void addToEmbeddingStore(Requirement requirement) {
-        embeddingStore.removeAll(
-                MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
-        );
-        String text = requirement.getRequirementId() + ": " + requirement.getRefinedRequirement();
-        Metadata meta = Metadata.from(
-                java.util.Map.of(
-                        "project_id", requirement.getRequirementSet().getId().toString(),
-                        "requirement_uuid", requirement.getUuid().toString()
-                ));
-        TextSegment segment = TextSegment.from(text, meta);
-        Embedding embedding = embeddingModel.embed(segment).content();
-        embeddingStore.add(embedding, segment);
+        try {
+            embeddingStore.removeAll(
+                    MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
+            );
+            String text = requirement.getRequirementId() + ": " + requirement.getRefinedRequirement();
+            Metadata meta = Metadata.from(
+                    java.util.Map.of(
+                            "project_id", requirement.getRequirementSet().getId().toString(),
+                            "requirement_uuid", requirement.getUuid().toString()
+                    ));
+            TextSegment segment = TextSegment.from(text, meta);
+            Embedding embedding = embeddingModel.embed(segment).content();
+            embeddingStore.add(embedding, segment);
+        } catch (OutOfMemoryError | Exception e) {
+            log.warn("Não foi possível indexar o requisito {} no embedding store: {}. " +
+                     "O requisito foi salvo no banco. Reindexe quando houver mais memória disponível.",
+                     requirement.getRequirementId(), e.getMessage());
+        }
     }
 
     private void removeFromEmbeddingStore(Requirement requirement) {
-        embeddingStore.removeAll(
-                MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
-        );
+        try {
+            embeddingStore.removeAll(
+                    MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
+            );
+        } catch (OutOfMemoryError | Exception e) {
+            log.warn("Não foi possível remover o requisito {} do embedding store: {}",
+                     requirement.getRequirementId(), e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -334,7 +345,16 @@ public class RequirementService {
     }
 
     private String findRelevantContext(String userQuery, String projectId, String requirementSetName, String requirementSetDescription) {
-        Embedding queryEmbedding = embeddingModel.embed(userQuery).content();
+        Embedding queryEmbedding;
+        try {
+            queryEmbedding = embeddingModel.embed(userQuery).content();
+        } catch (OutOfMemoryError | Exception e) {
+            log.warn("Embedding indisponível ao buscar contexto: {}. Retornando contexto baseado apenas no projeto.", e.getMessage());
+            StringBuilder fallback = new StringBuilder();
+            if (requirementSetName != null) fallback.append("PROJETO: ").append(requirementSetName).append("\n");
+            if (requirementSetDescription != null) fallback.append("DESCRIÇÃO: ").append(requirementSetDescription);
+            return fallback.toString();
+        }
 
         StringBuilder contextBuilder = new StringBuilder();
         if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
@@ -514,12 +534,16 @@ public class RequirementService {
         double similarityThreshold = 0.85;
         String projectIdStr = requirementSetId.toString();
 
-        // Pré-computa todos os embeddings em paralelo (AllMiniLmL6V2 é thread-safe)
         ConcurrentHashMap<UUID, Embedding> embeddingCache = new ConcurrentHashMap<>();
-        requirements.parallelStream().forEach(req -> {
-            String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
-            embeddingCache.put(req.getUuid(), embeddingModel.embed(queryText).content());
-        });
+        try {
+            requirements.parallelStream().forEach(req -> {
+                String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
+                embeddingCache.put(req.getUuid(), embeddingModel.embed(queryText).content());
+            });
+        } catch (OutOfMemoryError | Exception e) {
+            log.warn("Embedding indisponível para geração de relatório: {}. Retornando relatório vazio de conflitos.", e.getMessage());
+            return new RequirementReportDTO(requirementSetId, requirementSet.getName(), List.of());
+        }
 
         List<RequirementReportDTO.RequirementReportItemDTO> itemsWithProblems = new ArrayList<>();
 

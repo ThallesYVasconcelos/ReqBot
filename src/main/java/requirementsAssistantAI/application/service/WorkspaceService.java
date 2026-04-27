@@ -182,8 +182,13 @@ public class WorkspaceService {
                 continue;
             }
 
-            Embedding embedding = embeddingModel.embed(normalizedQuestion).content();
-            float[] vector = embedding.vector();
+            float[] vector;
+            try {
+                Embedding embedding = embeddingModel.embed(normalizedQuestion).content();
+                vector = embedding.vector();
+            } catch (OutOfMemoryError | Exception e) {
+                return List.of();
+            }
             QuestionCluster bestCluster = null;
             double bestSimilarity = 0.0;
 
