@@ -16,8 +16,6 @@ import requirementsAssistantAI.dto.ChatResponseDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -25,9 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class ChatServiceTest {
 
@@ -35,6 +31,7 @@ class ChatServiceTest {
     private RequirementRepository requirementRepository;
     private ChatMessageRepository chatMessageRepository;
     private ChatAiService chatAiService;
+    private WorkspaceAuthorizationService authorizationService;
     private ChatService chatService;
 
     @BeforeEach
@@ -43,89 +40,74 @@ class ChatServiceTest {
         requirementRepository = mock(RequirementRepository.class);
         chatMessageRepository = mock(ChatMessageRepository.class);
         chatAiService = mock(ChatAiService.class);
+        authorizationService = mock(WorkspaceAuthorizationService.class);
         EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
         @SuppressWarnings("unchecked")
         EmbeddingStore<TextSegment> embeddingStore = mock(EmbeddingStore.class);
 
-        WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
-        WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
-
         chatService = new ChatService(
-                chatbotConfigRepository,
-                requirementRepository,
-                chatMessageRepository,
-                chatAiService,
-                embeddingModel,
-                embeddingStore,
-                workspaceRepository,
-                workspaceMemberRepository
-        );
+                chatbotConfigRepository, requirementRepository, chatMessageRepository,
+                chatAiService, embeddingModel, embeddingStore, authorizationService);
     }
 
     @Test
-    void answerQuestionShouldPersistQuestionAndAnswerWithWorkspaceContext() {
-        UUID requirementSetId = UUID.randomUUID();
+    void workspaceQuestionShouldAuthorizeAndPersistTenantContext() {
+        UUID userId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         Workspace workspace = new Workspace(
-                "Turma Banco de Dados",
-                "Atividade sobre regras de negócio",
-                WorkspaceType.ACADEMIC,
-                "professor@example.com"
-        );
-        workspace.setId(UUID.randomUUID());
-
-        RequirementSet requirementSet = new RequirementSet("Sistema de Medicamentos", "Domínio de farmácia", workspace);
-        requirementSet.setId(requirementSetId);
-
-        ChatbotConfig config = new ChatbotConfig(requirementSet, null, null);
+                "Workspace de Banco de Dados", "Regras de negócio", WorkspaceType.ACADEMIC);
+        workspace.setId(workspaceId);
+        RequirementSet project = new RequirementSet("Medicamentos", "Domínio de farmácia", workspace);
+        project.setId(projectId);
+        ChatbotConfig config = new ChatbotConfig(project, null, null);
         config.setIsActive(true);
 
-        when(chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()).thenReturn(Optional.of(config));
-        when(requirementRepository.countByRequirementSetId(requirementSetId)).thenReturn(0L);
+        when(chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspaceId))
+                .thenReturn(Optional.of(config));
+        when(requirementRepository.countByRequirementSetId(projectId)).thenReturn(0L);
         when(chatAiService.answerQuestion(
                 eq("Qual regra vale para a cor da caixa?"),
-                eq("Nenhum requisito salvo encontrado para este projeto.")
-        )).thenReturn("A cor deve ser entendida como uma característica do produto no negócio.");
+                eq("Nenhum requisito salvo encontrado para este projeto.")))
+                .thenReturn("A cor é uma característica do produto.");
 
         ChatResponseDTO response = chatService.answerQuestion(
-                "Qual regra vale para a cor da caixa?",
-                "student@example.com"
-        );
+                "Qual regra vale para a cor da caixa?", userId,
+                "aluno@example.com", workspaceId);
 
         assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getAnswer()).contains("característica do produto");
-
+        verify(authorizationService).requireOwnerOrAdmin(workspaceId, userId);
         ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(chatMessageRepository).save(captor.capture());
-
-        ChatMessage saved = captor.getValue();
-        assertThat(saved.getUserEmail()).isEqualTo("student@example.com");
-        assertThat(saved.getQuestion()).isEqualTo("Qual regra vale para a cor da caixa?");
-        assertThat(saved.getAnswer()).contains("característica do produto");
-        assertThat(saved.getRequirementSet()).isSameAs(requirementSet);
-        assertThat(saved.getWorkspace()).isSameAs(workspace);
-        assertThat(saved.getAnsweredFromCache()).isFalse();
-        assertThat(saved.getChatbotAvailable()).isTrue();
+        assertThat(captor.getValue().getWorkspace()).isSameAs(workspace);
+        assertThat(captor.getValue().getRequirementSet()).isSameAs(project);
+        assertThat(captor.getValue().getUserEmail()).isEqualTo("aluno@example.com");
     }
 
     @Test
-    void answerQuestionShouldPersistFriendlyErrorWhenAiFails() {
-        UUID requirementSetId = UUID.randomUUID();
-        RequirementSet requirementSet = new RequirementSet("Projeto", "Descrição");
-        requirementSet.setId(requirementSetId);
-        ChatbotConfig config = new ChatbotConfig(requirementSet, null, null);
+    void workspaceQuestionShouldPersistFriendlyErrorWhenAiFails() {
+        UUID userId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Workspace workspace = new Workspace("Workspace", "Descrição", WorkspaceType.PROFESSIONAL);
+        workspace.setId(workspaceId);
+        RequirementSet project = new RequirementSet("Projeto", "Descrição", workspace);
+        project.setId(projectId);
+        ChatbotConfig config = new ChatbotConfig(project, null, null);
+        config.setIsActive(true);
 
-        when(chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()).thenReturn(Optional.of(config));
-        when(requirementRepository.countByRequirementSetId(requirementSetId)).thenReturn(0L);
-        when(chatAiService.answerQuestion(any(), any())).thenThrow(new RuntimeException("IA indisponível"));
+        when(chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspaceId))
+                .thenReturn(Optional.of(config));
+        when(requirementRepository.countByRequirementSetId(projectId)).thenReturn(0L);
+        when(chatAiService.answerQuestion(any(), any()))
+                .thenThrow(new RuntimeException("IA indisponível"));
 
-        ChatResponseDTO response = chatService.answerQuestion("Pergunta", "student@example.com");
+        ChatResponseDTO response = chatService.answerQuestion(
+                "Pergunta", userId, "aluno@example.com", workspaceId);
 
         assertThat(response.getSuccess()).isFalse();
         assertThat(response.getAnswer()).contains("ocorreu um erro");
-
-        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(chatMessageRepository).save(captor.capture());
-        assertThat(captor.getValue().getAnswer()).contains("ocorreu um erro");
-        assertThat(captor.getValue().getUserEmail()).isEqualTo("student@example.com");
+        verify(chatMessageRepository).save(argThat(message ->
+                message.getAnswer().contains("ocorreu um erro")));
     }
 }

@@ -1,18 +1,12 @@
 package requirementsAssistantAI.application.service;
 
-import requirementsAssistantAI.application.exception.ForbiddenException;
-import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.domain.ChatMessage;
 import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.domain.RequirementSet;
 import requirementsAssistantAI.domain.Workspace;
-import requirementsAssistantAI.domain.WorkspaceMember;
-import requirementsAssistantAI.domain.WorkspaceRole;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -57,8 +51,7 @@ public class ChatService {
     private final ChatAiService chatAiService;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
-    private final WorkspaceRepository workspaceRepository;
-    private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final WorkspaceAuthorizationService authorizationService;
 
     public ChatService(
             ChatbotConfigRepository chatbotConfigRepository,
@@ -67,21 +60,19 @@ public class ChatService {
             ChatAiService chatAiService,
             @Lazy EmbeddingModel embeddingModel,
             @Lazy EmbeddingStore<TextSegment> embeddingStore,
-            WorkspaceRepository workspaceRepository,
-            WorkspaceMemberRepository workspaceMemberRepository) {
+            WorkspaceAuthorizationService authorizationService) {
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.requirementRepository = requirementRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.chatAiService = chatAiService;
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
-        this.workspaceRepository = workspaceRepository;
-        this.workspaceMemberRepository = workspaceMemberRepository;
+        this.authorizationService = authorizationService;
     }
 
     @Transactional
-    public ChatResponseDTO answerQuestion(String question, String userEmail, UUID workspaceId) {
-        assertWorkspaceMember(workspaceId, userEmail);
+    public ChatResponseDTO answerQuestion(String question, UUID userId, String userEmail, UUID workspaceId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, userId);
 
         ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspaceId)
                 .orElseThrow(() -> new RuntimeException(
@@ -129,15 +120,16 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageDTO> getChatHistoryByUserAndWorkspace(String userEmail, UUID workspaceId) {
-        assertWorkspaceMember(workspaceId, userEmail);
+    public List<ChatMessageDTO> getChatHistoryByUserAndWorkspace(
+            UUID userId, String userEmail, UUID workspaceId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, userId);
         return chatMessageRepository.findByUserEmailAndWorkspaceId(userEmail, workspaceId)
                 .stream().map(this::toDTO).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageDTO> getChatHistoryByWorkspace(String requesterEmail, UUID workspaceId) {
-        assertAdminOrOwner(workspaceId, requesterEmail);
+    public List<ChatMessageDTO> getChatHistoryByWorkspace(UUID requesterUserId, UUID workspaceId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, requesterUserId);
         return chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
                 .stream().map(this::toDTO).collect(Collectors.toList());
     }
@@ -229,26 +221,6 @@ public class ChatService {
         } catch (Exception ex) {
             // Persistência de histórico é best-effort — não deve derrubar a resposta ao usuário
         }
-    }
-
-    private void assertWorkspaceMember(UUID workspaceId, String email) {
-        if (!workspaceMemberRepository.existsByWorkspace_IdAndUserEmail(workspaceId, email)) {
-            Workspace w = workspaceRepository.findById(workspaceId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-            if (!w.getOwnerEmail().equals(email)) {
-                throw new ForbiddenException("Você não é membro deste workspace.");
-            }
-        }
-    }
-
-    private void assertAdminOrOwner(UUID workspaceId, String email) {
-        Workspace w = workspaceRepository.findByIdWithMembers(workspaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        boolean allowed = w.getOwnerEmail().equals(email) ||
-                w.getMembers().stream().anyMatch(m ->
-                        m.getUserEmail().equals(email) &&
-                        (m.getRole() == WorkspaceRole.ADMIN || m.getRole() == WorkspaceRole.OWNER));
-        if (!allowed) throw new ForbiddenException("Apenas admins ou o dono podem acessar o histórico completo.");
     }
 
     private String findRelevantContext(String userQuestion, String projectId) {

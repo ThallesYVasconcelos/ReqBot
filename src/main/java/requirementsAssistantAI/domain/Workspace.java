@@ -29,12 +29,6 @@ public class Workspace {
     @Column(nullable = false)
     private WorkspaceType type;
 
-    @Column(name = "owner_email", nullable = false)
-    private String ownerEmail;
-
-    @Column(name = "invite_code", unique = true)
-    private String inviteCode;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -60,10 +54,9 @@ public class Workspace {
 
     public Workspace() {}
 
-    public Workspace(String name, String description, WorkspaceType type, String ownerEmail) {
+    public Workspace(String name, String description, WorkspaceType type) {
         this.name = name;
         this.description = description;
         this.type = type;
-        this.ownerEmail = ownerEmail;
     }
 }

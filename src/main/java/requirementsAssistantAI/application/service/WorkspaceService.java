@@ -1,26 +1,26 @@
 package requirementsAssistantAI.application.service;
 
-import requirementsAssistantAI.application.exception.ForbiddenException;
-import requirementsAssistantAI.application.exception.ResourceNotFoundException;
-import requirementsAssistantAI.domain.ChatMessage;
-import requirementsAssistantAI.domain.Workspace;
-import requirementsAssistantAI.domain.WorkspaceMember;
-import requirementsAssistantAI.domain.WorkspaceRole;
-import requirementsAssistantAI.dto.AddMemberRequest;
-import requirementsAssistantAI.dto.ChatMessageDTO;
-import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
-import requirementsAssistantAI.dto.CreateWorkspaceRequest;
-import requirementsAssistantAI.dto.WorkspaceDTO;
-import requirementsAssistantAI.dto.WorkspaceMemberDTO;
-import requirementsAssistantAI.infrastructure.ChatMessageRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import requirementsAssistantAI.application.exception.ResourceNotFoundException;
+import requirementsAssistantAI.domain.AppUser;
+import requirementsAssistantAI.domain.ChatMessage;
+import requirementsAssistantAI.domain.Workspace;
+import requirementsAssistantAI.domain.WorkspaceMember;
+import requirementsAssistantAI.domain.WorkspaceRole;
+import requirementsAssistantAI.dto.ChatMessageDTO;
+import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
+import requirementsAssistantAI.dto.CreateWorkspaceRequest;
+import requirementsAssistantAI.dto.WorkspaceDTO;
+import requirementsAssistantAI.dto.WorkspaceMemberDTO;
+import requirementsAssistantAI.infrastructure.AppUserRepository;
+import requirementsAssistantAI.infrastructure.ChatMessageRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
+import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 
 import java.text.Normalizer;
 import java.time.LocalDateTime;
@@ -32,127 +32,62 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class WorkspaceService {
 
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository memberRepository;
+    private final AppUserRepository appUserRepository;
+    private final WorkspaceAuthorizationService authorizationService;
     private final ChatMessageRepository chatMessageRepository;
     private final EmbeddingModel embeddingModel;
 
-    public WorkspaceService(WorkspaceRepository workspaceRepository,
-                            WorkspaceMemberRepository memberRepository,
-                            ChatMessageRepository chatMessageRepository,
-                            @Lazy EmbeddingModel embeddingModel) {
+    public WorkspaceService(
+            WorkspaceRepository workspaceRepository,
+            WorkspaceMemberRepository memberRepository,
+            AppUserRepository appUserRepository,
+            WorkspaceAuthorizationService authorizationService,
+            ChatMessageRepository chatMessageRepository,
+            @Lazy EmbeddingModel embeddingModel) {
         this.workspaceRepository = workspaceRepository;
         this.memberRepository = memberRepository;
+        this.appUserRepository = appUserRepository;
+        this.authorizationService = authorizationService;
         this.chatMessageRepository = chatMessageRepository;
         this.embeddingModel = embeddingModel;
     }
 
     @Transactional
-    public WorkspaceDTO createWorkspace(@NonNull CreateWorkspaceRequest request, @NonNull String ownerEmail) {
-        Workspace workspace = new Workspace(
-                request.name(),
-                request.description(),
-                request.type(),
-                ownerEmail
-        );
-        workspace.setInviteCode(generateInviteCode());
-        workspace = workspaceRepository.save(workspace);
-
-        WorkspaceMember ownerMember = new WorkspaceMember(workspace, ownerEmail, WorkspaceRole.OWNER);
-        memberRepository.save(ownerMember);
-
+    public WorkspaceDTO createWorkspace(@NonNull CreateWorkspaceRequest request, @NonNull UUID ownerUserId) {
+        AppUser owner = appUserRepository.findById(ownerUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", ownerUserId));
+        Workspace workspace = workspaceRepository.save(
+                new Workspace(request.name(), request.description(), request.type()));
+        WorkspaceMember ownerMember = memberRepository.save(
+                new WorkspaceMember(workspace, owner, WorkspaceRole.OWNER));
         return toDTO(workspace, List.of(ownerMember));
     }
 
-    @Transactional
-    public WorkspaceDTO joinByInviteCode(@NonNull String code, @NonNull String userEmail) {
-        Workspace workspace = workspaceRepository.findByInviteCode(code)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace com código", code));
-
-        if (!memberRepository.existsByWorkspace_IdAndUserEmail(workspace.getId(), userEmail)) {
-            WorkspaceMember member = new WorkspaceMember(workspace, userEmail, WorkspaceRole.MEMBER);
-            memberRepository.save(member);
-        }
-
-        List<WorkspaceMember> members = memberRepository.findByWorkspace_Id(workspace.getId());
-        return toDTO(workspace, members);
-    }
-
     @Transactional(readOnly = true)
-    public List<WorkspaceDTO> getMyWorkspaces(@NonNull String userEmail) {
-        return workspaceRepository.findAllAccessibleByEmail(userEmail)
+    public List<WorkspaceDTO> getMyWorkspaces(@NonNull UUID userId) {
+        return workspaceRepository.findAllAccessibleByUserId(userId)
                 .stream()
-                .map(w -> toDTO(w, memberRepository.findByWorkspace_Id(w.getId())))
+                .map(workspace -> toDTO(workspace, memberRepository.findByWorkspace_Id(workspace.getId())))
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public WorkspaceDTO getById(@NonNull UUID id, @NonNull String userEmail) {
+    public WorkspaceDTO getById(@NonNull UUID id, @NonNull UUID userId) {
+        authorizationService.requireOwnerOrAdmin(id, userId);
         Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(id))
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace", id));
-        assertAccess(workspace, userEmail);
         return toDTO(workspace, workspace.getMembers());
-    }
-
-    @Transactional
-    public WorkspaceDTO updateWorkspace(@NonNull UUID id, @NonNull CreateWorkspaceRequest request, @NonNull String userEmail) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(id))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", id));
-        assertAdminOrOwner(workspace, userEmail);
-
-        workspace.setName(request.name());
-        if (request.description() != null) workspace.setDescription(request.description());
-        workspace.setType(request.type());
-        workspace = workspaceRepository.save(workspace);
-        return toDTO(workspace, workspace.getMembers());
-    }
-
-    @Transactional
-    public void deleteWorkspace(@NonNull UUID id, @NonNull String userEmail) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(id))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", id));
-        assertOwner(workspace, userEmail);
-        workspaceRepository.delete(workspace);
-    }
-
-    @Transactional
-    public WorkspaceMemberDTO addMember(@NonNull UUID workspaceId, @NonNull AddMemberRequest request, @NonNull String requesterEmail) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(workspaceId))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAdminOrOwner(workspace, requesterEmail);
-
-        if (memberRepository.existsByWorkspace_IdAndUserEmail(workspaceId, request.userEmail())) {
-            throw new IllegalStateException("Usuário " + request.userEmail() + " já é membro deste workspace.");
-        }
-
-        WorkspaceMember member = new WorkspaceMember(workspace, request.userEmail(), request.role());
-        member = memberRepository.save(member);
-        return toMemberDTO(member);
-    }
-
-    @Transactional
-    public void removeMember(@NonNull UUID workspaceId, @NonNull String memberEmail, @NonNull String requesterEmail) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(workspaceId))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAdminOrOwner(workspace, requesterEmail);
-
-        if (workspace.getOwnerEmail().equals(memberEmail)) {
-            throw new IllegalStateException("Não é possível remover o dono do workspace.");
-        }
-        memberRepository.deleteByWorkspace_IdAndUserEmail(workspaceId, memberEmail);
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageDTO> getChatHistory(@NonNull UUID workspaceId, @NonNull String requesterEmail) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(workspaceId))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAccess(workspace, requesterEmail);
-
+    public List<ChatMessageDTO> getChatHistory(@NonNull UUID workspaceId, @NonNull UUID requesterUserId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, requesterUserId);
         return chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
                 .stream()
                 .map(this::toChatMessageDTO)
@@ -160,19 +95,18 @@ public class WorkspaceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ChatQuestionClusterDTO> getAnonymousQuestionRanking(@NonNull UUID workspaceId,
-                                                                    @NonNull String requesterEmail,
-                                                                    int limit,
-                                                                    double similarityThreshold) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(Objects.requireNonNull(workspaceId))
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAdminOrOwner(workspace, requesterEmail);
+    public List<ChatQuestionClusterDTO> getAnonymousQuestionRanking(
+            @NonNull UUID workspaceId,
+            @NonNull UUID requesterUserId,
+            int limit,
+            double similarityThreshold) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, requesterUserId);
 
         int safeLimit = Math.max(1, Math.min(limit, 50));
         double safeThreshold = Math.max(0.70, Math.min(similarityThreshold, 0.98));
         List<ChatMessage> messages = chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
                 .stream()
-                .filter(cm -> cm.getQuestion() != null && !cm.getQuestion().isBlank())
+                .filter(message -> message.getQuestion() != null && !message.getQuestion().isBlank())
                 .toList();
 
         List<QuestionCluster> clusters = new ArrayList<>();
@@ -186,12 +120,12 @@ public class WorkspaceService {
             try {
                 Embedding embedding = embeddingModel.embed(normalizedQuestion).content();
                 vector = embedding.vector();
-            } catch (OutOfMemoryError | Exception e) {
+            } catch (Exception exception) {
                 return List.of();
             }
+
             QuestionCluster bestCluster = null;
             double bestSimilarity = 0.0;
-
             for (QuestionCluster cluster : clusters) {
                 double similarity = cosineSimilarity(vector, cluster.representativeVector);
                 if (similarity >= safeThreshold && similarity > bestSimilarity) {
@@ -213,10 +147,10 @@ public class WorkspaceService {
         );
 
         List<ChatQuestionClusterDTO> ranking = new ArrayList<>();
-        for (int i = 0; i < Math.min(safeLimit, clusters.size()); i++) {
-            QuestionCluster cluster = clusters.get(i);
+        for (int index = 0; index < Math.min(safeLimit, clusters.size()); index++) {
+            QuestionCluster cluster = clusters.get(index);
             ranking.add(new ChatQuestionClusterDTO(
-                    i + 1,
+                    index + 1,
                     cluster.representativeQuestion,
                     cluster.size(),
                     cluster.sampleQuestions(),
@@ -229,109 +163,85 @@ public class WorkspaceService {
         return ranking;
     }
 
-    public void assertAdminOrOwnerById(@NonNull UUID workspaceId, @NonNull String email) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAdminOrOwner(workspace, email);
+    public void assertAdminOrOwnerById(@NonNull UUID workspaceId, @NonNull UUID userId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, userId);
     }
 
-    public void assertMemberById(@NonNull UUID workspaceId, @NonNull String email) {
-        Workspace workspace = workspaceRepository.findByIdWithMembers(workspaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace", workspaceId));
-        assertAccess(workspace, email);
-    }
-
-    private String generateInviteCode() {
-        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(chars.charAt(ThreadLocalRandom.current().nextInt(chars.length())));
-        }
-        return sb.toString();
-    }
-
-    private void assertAccess(Workspace workspace, String email) {
-        boolean isMember = workspace.getOwnerEmail().equals(email) ||
-                workspace.getMembers().stream().anyMatch(m -> m.getUserEmail().equals(email));
-        if (!isMember) throw new ForbiddenException("Acesso negado a este workspace.");
-    }
-
-    private void assertAdminOrOwner(Workspace workspace, String email) {
-        boolean allowed = workspace.getOwnerEmail().equals(email) ||
-                workspace.getMembers().stream().anyMatch(m ->
-                        m.getUserEmail().equals(email) &&
-                        (m.getRole() == WorkspaceRole.ADMIN || m.getRole() == WorkspaceRole.OWNER));
-        if (!allowed) throw new ForbiddenException("Apenas admins ou o dono podem executar esta ação.");
-    }
-
-    private void assertOwner(Workspace workspace, String email) {
-        if (!workspace.getOwnerEmail().equals(email))
-            throw new ForbiddenException("Apenas o dono pode excluir o workspace.");
+    public void assertMemberById(@NonNull UUID workspaceId, @NonNull UUID userId) {
+        authorizationService.requireOwnerOrAdmin(workspaceId, userId);
     }
 
     private WorkspaceDTO toDTO(Workspace workspace, List<WorkspaceMember> members) {
         List<WorkspaceMemberDTO> memberDTOs = members.stream()
                 .map(this::toMemberDTO)
                 .collect(Collectors.toList());
+        String ownerEmail = members.stream()
+                .filter(member -> member.getRole() == WorkspaceRole.OWNER)
+                .map(member -> member.getUser().getEmail())
+                .findFirst()
+                .orElse(null);
         return new WorkspaceDTO(
                 workspace.getId(),
                 workspace.getName(),
                 workspace.getDescription(),
                 workspace.getType(),
-                workspace.getOwnerEmail(),
-                workspace.getInviteCode(),
+                ownerEmail,
                 memberDTOs,
                 workspace.getCreatedAt(),
                 workspace.getUpdatedAt()
         );
     }
 
-    private WorkspaceMemberDTO toMemberDTO(WorkspaceMember m) {
-        return new WorkspaceMemberDTO(m.getId(), m.getUserEmail(), m.getRole(), m.getCreatedAt());
+    private WorkspaceMemberDTO toMemberDTO(WorkspaceMember member) {
+        return new WorkspaceMemberDTO(
+                member.getId(),
+                member.getUser().getEmail(),
+                member.getRole(),
+                member.getCreatedAt()
+        );
     }
 
-    private ChatMessageDTO toChatMessageDTO(requirementsAssistantAI.domain.ChatMessage cm) {
+    private ChatMessageDTO toChatMessageDTO(ChatMessage message) {
         return new ChatMessageDTO(
-                cm.getId(),
-                cm.getUserEmail(),
-                cm.getQuestion(),
-                cm.getAnswer(),
-                cm.getAnsweredFromCache(),
-                cm.getChatbotAvailable(),
-                cm.getAskedAt(),
-                cm.getRequirementSet() != null ? cm.getRequirementSet().getId() : null,
-                cm.getRequirementSet() != null ? cm.getRequirementSet().getName() : null,
-                cm.getWorkspace() != null ? cm.getWorkspace().getId() : null,
-                cm.getWorkspace() != null ? cm.getWorkspace().getName() : null
+                message.getId(),
+                message.getUserEmail(),
+                message.getQuestion(),
+                message.getAnswer(),
+                message.getAnsweredFromCache(),
+                message.getChatbotAvailable(),
+                message.getAskedAt(),
+                message.getRequirementSet() != null ? message.getRequirementSet().getId() : null,
+                message.getRequirementSet() != null ? message.getRequirementSet().getName() : null,
+                message.getWorkspace() != null ? message.getWorkspace().getId() : null,
+                message.getWorkspace() != null ? message.getWorkspace().getName() : null
         );
     }
 
     private String normalizeQuestionForAnalytics(String question) {
-        String normalized = Normalizer.normalize(question, Normalizer.Form.NFD)
+        return Normalizer.normalize(question, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase()
                 .replaceAll("[^a-z0-9\\s]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return normalized;
     }
 
-    private double cosineSimilarity(float[] a, float[] b) {
-        if (a == null || b == null || a.length == 0 || a.length != b.length) {
+    private double cosineSimilarity(float[] first, float[] second) {
+        if (first == null || second == null || first.length == 0 || first.length != second.length) {
             return 0.0;
         }
         double dot = 0.0;
-        double normA = 0.0;
-        double normB = 0.0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
+        double firstNorm = 0.0;
+        double secondNorm = 0.0;
+        for (int index = 0; index < first.length; index++) {
+            dot += first[index] * second[index];
+            firstNorm += first[index] * first[index];
+            secondNorm += second[index] * second[index];
         }
-        if (normA == 0.0 || normB == 0.0) {
+        if (firstNorm == 0.0 || secondNorm == 0.0) {
             return 0.0;
         }
-        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+        return dot / (Math.sqrt(firstNorm) * Math.sqrt(secondNorm));
     }
 
     private static class QuestionCluster {
@@ -379,9 +289,7 @@ public class WorkspaceService {
 
         List<String> sampleQuestions() {
             Set<String> uniqueQuestions = new LinkedHashSet<>(questions);
-            return uniqueQuestions.stream()
-                    .limit(5)
-                    .toList();
+            return uniqueQuestions.stream().limit(5).toList();
         }
     }
 }

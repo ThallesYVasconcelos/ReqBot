@@ -16,12 +16,8 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     @Query("SELECT w FROM Workspace w LEFT JOIN FETCH w.members WHERE w.id = :id")
     Optional<Workspace> findByIdWithMembers(@Param("id") UUID id);
 
-    @Query("SELECT DISTINCT w FROM Workspace w LEFT JOIN w.members m " +
-           "WHERE w.ownerEmail = :email OR m.userEmail = :email " +
+    @Query("SELECT DISTINCT w FROM Workspace w JOIN w.members m " +
+           "WHERE m.user.id = :userId " +
            "ORDER BY w.createdAt DESC")
-    List<Workspace> findAllAccessibleByEmail(@Param("email") String email);
-
-    List<Workspace> findByOwnerEmail(String ownerEmail);
-
-    java.util.Optional<Workspace> findByInviteCode(String inviteCode);
+    List<Workspace> findAllAccessibleByUserId(@Param("userId") UUID userId);
 }

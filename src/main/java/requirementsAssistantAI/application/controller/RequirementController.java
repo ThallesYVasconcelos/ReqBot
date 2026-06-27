@@ -1,109 +1,114 @@
 package requirementsAssistantAI.application.controller;
 
-import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.NonNull;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import requirementsAssistantAI.application.service.RequirementService;
+import requirementsAssistantAI.application.service.WorkspaceAuthorizationService;
+import requirementsAssistantAI.dto.*;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
-
-import requirementsAssistantAI.application.service.RequirementService;
-import requirementsAssistantAI.dto.CreateRequirementRequest;
-import requirementsAssistantAI.dto.RefineRequirementRequest;
-import requirementsAssistantAI.dto.RequirementDTO;
-import requirementsAssistantAI.dto.RequirementReportDTO;
-import requirementsAssistantAI.dto.SaveRequirementRequest;
-import requirementsAssistantAI.dto.UpdateRequirementRequest;
 
 @RestController
 @RequestMapping("/api/requirements")
 public class RequirementController {
 
     private final RequirementService requirementService;
+    private final WorkspaceAuthorizationService authorizationService;
 
-    public RequirementController(RequirementService requirementService) {
+    public RequirementController(
+            RequirementService requirementService,
+            WorkspaceAuthorizationService authorizationService) {
         this.requirementService = requirementService;
+        this.authorizationService = authorizationService;
     }
 
-    /**
-     * Refina requisição com IA sem salvar. Usuário edita e escolhe versão antes de salvar.
-     */
     @PostMapping
-    public ResponseEntity<RequirementDTO> refineRequirement(@Valid @RequestBody CreateRequirementRequest request) {
-        RequirementDTO dto = requirementService.refineRequirement(
-                request.getRequirement(),
-                Objects.requireNonNull(request.getRequirementSetId())
-        );
-        return ResponseEntity.ok(dto);
+    public ResponseEntity<RequirementDTO> refineRequirement(
+            @Valid @RequestBody CreateRequirementRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID projectId = request.getRequirementSetId();
+        authorizationService.requireOwnerOrAdminForProject(projectId, userId(jwt));
+        return ResponseEntity.ok(requirementService.refineRequirement(request.getRequirement(), projectId));
     }
 
     @PostMapping("/refine")
-    public ResponseEntity<RequirementDTO> refine(@Valid @RequestBody RefineRequirementRequest request) {
-        RequirementDTO dto = requirementService.refineRequirement(
-                request.getRequirement(),
-                Objects.requireNonNull(request.getRequirementSetId())
-        );
-        return ResponseEntity.ok(dto);
+    public ResponseEntity<RequirementDTO> refine(
+            @Valid @RequestBody RefineRequirementRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID projectId = request.getRequirementSetId();
+        authorizationService.requireOwnerOrAdminForProject(projectId, userId(jwt));
+        return ResponseEntity.ok(requirementService.refineRequirement(request.getRequirement(), projectId));
     }
 
     @PostMapping("/save")
-    public ResponseEntity<RequirementDTO> saveRequirement(@Valid @RequestBody SaveRequirementRequest request) {
-        RequirementDTO dto = requirementService.saveRequirement(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    public ResponseEntity<RequirementDTO> saveRequirement(
+            @Valid @RequestBody SaveRequirementRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForProject(request.getRequirementSetId(), userId(jwt));
+        return ResponseEntity.status(HttpStatus.CREATED).body(requirementService.saveRequirement(request));
     }
 
     @GetMapping
     public ResponseEntity<List<RequirementDTO>> getAllRequirements(
-            @RequestParam(required = false) UUID requirementSetId) {
-        List<RequirementDTO> requirements = requirementService.getAllRequirements(requirementSetId);
-        return ResponseEntity.ok(requirements);
+            @RequestParam UUID requirementSetId,
+            @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForProject(requirementSetId, userId(jwt));
+        return ResponseEntity.ok(requirementService.getAllRequirements(requirementSetId));
     }
 
     @GetMapping("/report")
     public ResponseEntity<RequirementReportDTO> getGeneralReport(
-            @RequestParam @NonNull UUID requirementSetId) {
-        RequirementReportDTO report = requirementService.getGeneralReport(Objects.requireNonNull(requirementSetId));
-        return ResponseEntity.ok(report);
+            @RequestParam UUID requirementSetId,
+            @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForProject(requirementSetId, userId(jwt));
+        return ResponseEntity.ok(requirementService.getGeneralReport(requirementSetId));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<RequirementDTO> getRequirement(@PathVariable @NonNull UUID id) {
-        RequirementDTO requirementDTO = requirementService.getRequirementById(Objects.requireNonNull(id));
-        return ResponseEntity.ok(requirementDTO);
+    public ResponseEntity<RequirementDTO> getRequirement(
+            @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForRequirement(id, userId(jwt));
+        return ResponseEntity.ok(requirementService.getRequirementById(id));
     }
 
     @GetMapping("/set/{requirementSetId}")
-    public ResponseEntity<List<RequirementDTO>> getRequirementsBySet(@PathVariable @NonNull UUID requirementSetId) {
-        List<RequirementDTO> requirements = requirementService.getRequirementsBySetId(Objects.requireNonNull(requirementSetId));
-        return ResponseEntity.ok(requirements);
+    public ResponseEntity<List<RequirementDTO>> getRequirementsBySet(
+            @PathVariable UUID requirementSetId, @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForProject(requirementSetId, userId(jwt));
+        return ResponseEntity.ok(requirementService.getRequirementsBySetId(requirementSetId));
     }
 
     @GetMapping("/{id}/history")
-    public ResponseEntity<List<RequirementHistoryDTO>> getRequirementHistory(@PathVariable @NonNull UUID id) {
-        List<RequirementHistoryDTO> history = requirementService.getRequirementHistory(Objects.requireNonNull(id));
-        return ResponseEntity.ok(history);
+    public ResponseEntity<List<RequirementHistoryDTO>> getRequirementHistory(
+            @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForRequirement(id, userId(jwt));
+        return ResponseEntity.ok(requirementService.getRequirementHistory(id));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<RequirementDTO> updateRequirement(
-            @PathVariable @NonNull UUID id,
-            @Valid @RequestBody UpdateRequirementRequest request) {
-        RequirementDTO dto = requirementService.updateRequirement(
-                Objects.requireNonNull(id),
-                request.getRawRequirement(),
-                request.getRefinedRequirement(),
-                request.isUseRefinedVersion()
-        );
-        return ResponseEntity.ok(dto);
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateRequirementRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForRequirement(id, userId(jwt));
+        return ResponseEntity.ok(requirementService.updateRequirement(
+                id, request.getRawRequirement(), request.getRefinedRequirement(), request.isUseRefinedVersion()));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteRequirement(@PathVariable @NonNull UUID id) {
-        requirementService.deleteRequirement(Objects.requireNonNull(id));
+    public ResponseEntity<Void> deleteRequirement(
+            @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        authorizationService.requireOwnerOrAdminForRequirement(id, userId(jwt));
+        requirementService.deleteRequirement(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID userId(Jwt jwt) {
+        return UUID.fromString(jwt.getSubject());
     }
 }

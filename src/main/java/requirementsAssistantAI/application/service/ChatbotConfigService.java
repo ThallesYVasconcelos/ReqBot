@@ -5,7 +5,6 @@ import requirementsAssistantAI.domain.RequirementSet;
 import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.RequirementSetRepository;
-import requirementsAssistantAI.infrastructure.WorkspaceRepository;
 import jakarta.validation.Valid;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
@@ -16,8 +15,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
+import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.dto.ChatbotConfigDTO;
 import requirementsAssistantAI.dto.CreateChatbotConfigRequest;
 
@@ -26,24 +25,24 @@ public class ChatbotConfigService {
 
     private final ChatbotConfigRepository chatbotConfigRepository;
     private final RequirementSetRepository requirementSetRepository;
-    private final WorkspaceRepository workspaceRepository;
 
     public ChatbotConfigService(
             ChatbotConfigRepository chatbotConfigRepository,
-            RequirementSetRepository requirementSetRepository,
-            WorkspaceRepository workspaceRepository) {
+            RequirementSetRepository requirementSetRepository) {
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.requirementSetRepository = requirementSetRepository;
-        this.workspaceRepository = workspaceRepository;
     }
 
     @Transactional
-    public ChatbotConfigDTO createOrUpdateConfig(@Valid CreateChatbotConfigRequest request) {
+    public ChatbotConfigDTO createOrUpdateConfig(@Valid CreateChatbotConfigRequest request, UUID workspaceId) {
         RequirementSet requirementSet = requirementSetRepository.findById(
                 Objects.requireNonNull(request.getRequirementSetId()))
                 .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto)", request.getRequirementSetId()));
 
         Workspace workspace = requirementSet.getWorkspace();
+        if (workspace == null || !workspace.getId().equals(workspaceId)) {
+            throw new ForbiddenException("O projeto não pertence ao workspace informado.");
+        }
 
         if (workspace != null) {
             chatbotConfigRepository.findByIsActiveTrueAndWorkspace_Id(workspace.getId())
@@ -67,6 +66,20 @@ public class ChatbotConfigService {
         config.setShowRequirementsToUsers(Boolean.TRUE.equals(request.getShowRequirementsToUsers()));
         config = chatbotConfigRepository.save(config);
         return convertToDTO(config);
+    }
+
+    /** Endpoint global legado; mantido apenas para compatibilidade e bloqueado pela segurança. */
+    @Deprecated
+    @Transactional
+    public ChatbotConfigDTO createOrUpdateConfig(@Valid CreateChatbotConfigRequest request) {
+        RequirementSet requirementSet = requirementSetRepository.findById(
+                        Objects.requireNonNull(request.getRequirementSetId()))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "RequirementSet (projeto)", request.getRequirementSetId()));
+        if (requirementSet.getWorkspace() == null) {
+            throw new ForbiddenException("O projeto precisa pertencer a um workspace.");
+        }
+        return createOrUpdateConfig(request, requirementSet.getWorkspace().getId());
     }
 
     @Transactional(readOnly = true)

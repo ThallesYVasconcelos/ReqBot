@@ -66,28 +66,21 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Admin global: gerencia chatbot config legado
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // Workspaces: só ADMIN cria; aluno pode fazer JOIN e listar os seus
-                        .requestMatchers(HttpMethod.POST, "/api/workspaces").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/workspaces/join").authenticated()
+                        // Rotas globais legadas não possuem isolamento por workspace.
+                        .requestMatchers("/api/admin/**").denyAll()
+                        .requestMatchers(HttpMethod.POST, "/api/workspaces").authenticated()
                         .requestMatchers("/api/workspaces/**").authenticated()
-                        // Chat por workspace: qualquer membro autenticado
-                        .requestMatchers("/api/workspaces/*/chat/**").authenticated()
-                        // Requirements: só ADMIN cria/edita; autenticado pode listar
-                        .requestMatchers(HttpMethod.POST, "/api/requirements").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/requirements/refine").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/requirements/save").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/requirements/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").hasRole("ADMIN")
-                        .requestMatchers("/api/requirements/*/history").hasRole("ADMIN")
+                        // OWNER/ADMIN é validado no serviço usando o subject do JWT.
+                        .requestMatchers(HttpMethod.POST, "/api/requirements").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/requirements/refine").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/requirements/save").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/requirements/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/requirements/**").authenticated()
+                        .requestMatchers("/api/requirements/*/history").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/requirements/**").authenticated()
-                        // RequirementSets por workspace — todo controlo é no service via ownerEmail
-                        .requestMatchers("/api/workspaces/*/requirement-sets/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/requirement-sets").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/requirement-sets/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/requirement-sets/**").authenticated()
-                        .requestMatchers("/api/user/**").authenticated()
+                        .requestMatchers("/api/requirement-sets/**").denyAll()
+                        // Será reaberto quando o acesso de usuário por código de chatbot existir.
+                        .requestMatchers("/api/user/**").denyAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions

@@ -12,7 +12,6 @@ public record WorkspaceDTO(
         String description,
         WorkspaceType type,
         String ownerEmail,
-        String inviteCode,
         List<WorkspaceMemberDTO> members,
         LocalDateTime createdAt,
         LocalDateTime updatedAt

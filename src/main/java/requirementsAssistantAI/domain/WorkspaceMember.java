@@ -12,7 +12,7 @@ import java.util.UUID;
 @Entity
 @Table(
     name = "workspace_members",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"workspace_id", "user_email"})
+    uniqueConstraints = @UniqueConstraint(columnNames = {"workspace_id", "user_id"})
 )
 public class WorkspaceMember {
 
@@ -24,8 +24,9 @@ public class WorkspaceMember {
     @JoinColumn(name = "workspace_id", nullable = false)
     private Workspace workspace;
 
-    @Column(name = "user_email", nullable = false)
-    private String userEmail;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private AppUser user;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -41,9 +42,9 @@ public class WorkspaceMember {
 
     public WorkspaceMember() {}
 
-    public WorkspaceMember(Workspace workspace, String userEmail, WorkspaceRole role) {
+    public WorkspaceMember(Workspace workspace, AppUser user, WorkspaceRole role) {
         this.workspace = workspace;
-        this.userEmail = userEmail;
+        this.user = user;
         this.role = role;
     }
 }

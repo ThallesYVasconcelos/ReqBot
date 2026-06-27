@@ -34,7 +34,8 @@ public class ChatbotController {
             @Valid @RequestBody ChatQuestionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         String userEmail = jwt.getClaimAsString("email");
-        return ResponseEntity.ok(chatService.answerQuestion(request.getQuestion(), userEmail, workspaceId));
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(chatService.answerQuestion(request.getQuestion(), userId, userEmail, workspaceId));
     }
 
     @Operation(summary = "Histórico de perguntas do usuário autenticado neste workspace")
@@ -43,7 +44,8 @@ public class ChatbotController {
             @PathVariable UUID workspaceId,
             @AuthenticationPrincipal Jwt jwt) {
         String userEmail = jwt.getClaimAsString("email");
-        return ResponseEntity.ok(chatService.getChatHistoryByUserAndWorkspace(userEmail, workspaceId));
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(chatService.getChatHistoryByUserAndWorkspace(userId, userEmail, workspaceId));
     }
 
     @Operation(summary = "Histórico completo do workspace (admin/owner)")
@@ -51,7 +53,7 @@ public class ChatbotController {
     public ResponseEntity<List<ChatMessageDTO>> getWorkspaceHistory(
             @PathVariable UUID workspaceId,
             @AuthenticationPrincipal Jwt jwt) {
-        String userEmail = jwt.getClaimAsString("email");
-        return ResponseEntity.ok(chatService.getChatHistoryByWorkspace(userEmail, workspaceId));
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(chatService.getChatHistoryByWorkspace(userId, workspaceId));
     }
 }
