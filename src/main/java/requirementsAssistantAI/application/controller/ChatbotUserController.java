@@ -46,7 +46,7 @@ public class ChatbotUserController {
         boolean isAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
         if (isAdmin) return true;
-        return chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+        return chatbotConfigRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
                 .map(c -> Boolean.TRUE.equals(c.getShowRequirementsToUsers()))
                 .orElse(false);
     }

@@ -18,6 +18,8 @@ import java.util.UUID;
     name = "chat_messages",
     indexes = {
         @Index(name = "idx_chat_messages_requirement_set_id", columnList = "requirement_set_id"),
+        @Index(name = "idx_chat_messages_chatbot_asked_at", columnList = "chatbot_id,asked_at"),
+        @Index(name = "idx_chat_messages_chatbot_user_asked_at", columnList = "chatbot_id,user_email,asked_at"),
         @Index(name = "idx_chat_messages_user_email", columnList = "user_email"),
         @Index(name = "idx_chat_messages_asked_at", columnList = "asked_at")
     }
@@ -54,6 +56,10 @@ public class ChatMessage {
     @JoinColumn(name = "workspace_id")
     private Workspace workspace;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "chatbot_id")
+    private ChatbotConfig chatbot;
+
     @PrePersist
     protected void onCreate() {
         if (askedAt == null) {
@@ -65,7 +71,8 @@ public class ChatMessage {
 
     public ChatMessage(String userEmail, String question, String answer,
                        boolean answeredFromCache, boolean chatbotAvailable,
-                       RequirementSet requirementSet, Workspace workspace) {
+                       RequirementSet requirementSet, Workspace workspace,
+                       ChatbotConfig chatbot) {
         this.userEmail = userEmail;
         this.question = question;
         this.answer = answer;
@@ -73,6 +80,7 @@ public class ChatMessage {
         this.chatbotAvailable = chatbotAvailable;
         this.requirementSet = requirementSet;
         this.workspace = workspace;
+        this.chatbot = chatbot;
         this.askedAt = LocalDateTime.now();
     }
 }

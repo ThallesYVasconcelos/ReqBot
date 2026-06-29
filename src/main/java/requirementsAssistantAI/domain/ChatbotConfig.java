@@ -8,12 +8,24 @@ import java.time.ZoneId;
 import java.util.UUID;
 
 @Entity
-@Table(name = "chatbot_config")
+@Table(
+        name = "chatbot_config",
+        indexes = {
+                @Index(name = "idx_chatbot_config_workspace_id", columnList = "workspace_id"),
+                @Index(name = "idx_chatbot_config_requirement_set_id", columnList = "requirement_set_id"),
+                @Index(name = "idx_chatbot_config_workspace_active", columnList = "workspace_id,is_active")
+        })
 public class ChatbotConfig {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Column(nullable = false, length = 120)
+    private String name;
+
+    @Column(name = "access_code_hash", nullable = false, unique = true, length = 64)
+    private String accessCodeHash;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
@@ -58,7 +70,10 @@ public class ChatbotConfig {
     public ChatbotConfig() {
     }
 
-    public ChatbotConfig(RequirementSet requirementSet, LocalTime startTime, LocalTime endTime) {
+    public ChatbotConfig(String name, String accessCodeHash, RequirementSet requirementSet,
+                         LocalTime startTime, LocalTime endTime) {
+        this.name = name;
+        this.accessCodeHash = accessCodeHash;
         this.requirementSet = requirementSet;
         this.workspace = requirementSet != null ? requirementSet.getWorkspace() : null;
         this.startTime = startTime;
@@ -71,6 +86,12 @@ public class ChatbotConfig {
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getAccessCodeHash() { return accessCodeHash; }
+    public void setAccessCodeHash(String accessCodeHash) { this.accessCodeHash = accessCodeHash; }
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }

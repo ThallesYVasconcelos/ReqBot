@@ -11,6 +11,8 @@ import java.util.UUID;
 @Setter
 public class ChatbotConfigDTO {
     private UUID id;
+    private String name;
+    private String accessCode;
     private Boolean isActive;
     private UUID requirementSetId;
     private String requirementSetName;
@@ -26,11 +28,14 @@ public class ChatbotConfigDTO {
     public ChatbotConfigDTO() {
     }
 
-    public ChatbotConfigDTO(UUID id, Boolean isActive, UUID requirementSetId, String requirementSetName,
+    public ChatbotConfigDTO(UUID id, String name, String accessCode,
+                            Boolean isActive, UUID requirementSetId, String requirementSetName,
                             UUID workspaceId, String workspaceName,
                             LocalTime startTime, LocalTime endTime, Boolean showRequirementsToUsers,
                             LocalDateTime createdAt, LocalDateTime updatedAt, Boolean availableNow) {
         this.id = id;
+        this.name = name;
+        this.accessCode = accessCode;
         this.isActive = isActive;
         this.requirementSetId = requirementSetId;
         this.requirementSetName = requirementSetName;

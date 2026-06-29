@@ -14,5 +14,7 @@ public record ChatMessageDTO(
         UUID requirementSetId,
         String requirementSetName,
         UUID workspaceId,
-        String workspaceName
+        String workspaceName,
+        UUID chatbotId,
+        String chatbotName
 ) {}

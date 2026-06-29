@@ -29,7 +29,7 @@ public class ChatbotUserService {
 
     @Transactional(readOnly = true)
     public RequirementSetDTO getChatbotRequirementSet() {
-        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+        ChatbotConfig config = chatbotConfigRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
                 .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo"));
         
         return requirementSetService.getRequirementSetById(config.getRequirementSet().getId());
@@ -37,7 +37,7 @@ public class ChatbotUserService {
 
     @Transactional(readOnly = true)
     public List<RequirementDTO> getApprovedRequirements() {
-        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+        ChatbotConfig config = chatbotConfigRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
                 .orElseThrow(() -> new RuntimeException("Chatbot não está configurado ou está inativo"));
         
         List<RequirementDTO> allRequirements = requirementService.getRequirementsBySetId(
@@ -49,7 +49,7 @@ public class ChatbotUserService {
 
     @Transactional(readOnly = true)
     public ChatbotScheduleDTO getChatbotSchedule() {
-        ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+        ChatbotConfig config = chatbotConfigRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
                 .orElse(null);
         if (config == null) {
             return new ChatbotScheduleDTO(null, null, false);
@@ -60,7 +60,7 @@ public class ChatbotUserService {
     @Transactional(readOnly = true)
     public boolean isChatbotAvailable() {
         try {
-            ChatbotConfig config = chatbotConfigRepository.findByIsActiveTrueWithRequirementSet()
+            ChatbotConfig config = chatbotConfigRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
                     .orElse(null);
             return config != null && config.isAvailableNow();
         } catch (Exception e) {

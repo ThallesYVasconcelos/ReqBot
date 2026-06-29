@@ -213,7 +213,9 @@ public class WorkspaceService {
                 message.getRequirementSet() != null ? message.getRequirementSet().getId() : null,
                 message.getRequirementSet() != null ? message.getRequirementSet().getName() : null,
                 message.getWorkspace() != null ? message.getWorkspace().getId() : null,
-                message.getWorkspace() != null ? message.getWorkspace().getName() : null
+                message.getWorkspace() != null ? message.getWorkspace().getName() : null,
+                message.getChatbot() != null ? message.getChatbot().getId() : null,
+                message.getChatbot() != null ? message.getChatbot().getName() : null
         );
     }
 

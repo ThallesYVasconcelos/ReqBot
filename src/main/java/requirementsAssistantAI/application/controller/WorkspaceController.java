@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import requirementsAssistantAI.application.service.ChatService;
 import requirementsAssistantAI.application.service.ChatbotConfigService;
 import requirementsAssistantAI.application.service.RequirementSetService;
 import requirementsAssistantAI.application.service.WorkspaceService;
@@ -24,13 +25,17 @@ public class WorkspaceController {
     private final WorkspaceService workspaceService;
     private final RequirementSetService requirementSetService;
     private final ChatbotConfigService chatbotConfigService;
+    private final ChatService chatService;
 
-    public WorkspaceController(WorkspaceService workspaceService,
-                               RequirementSetService requirementSetService,
-                               ChatbotConfigService chatbotConfigService) {
+    public WorkspaceController(
+            WorkspaceService workspaceService,
+            RequirementSetService requirementSetService,
+            ChatbotConfigService chatbotConfigService,
+            ChatService chatService) {
         this.workspaceService = workspaceService;
         this.requirementSetService = requirementSetService;
         this.chatbotConfigService = chatbotConfigService;
+        this.chatService = chatService;
     }
 
     @Operation(summary = "Criar workspace; o usuário autenticado torna-se OWNER")
@@ -72,31 +77,50 @@ public class WorkspaceController {
         return ResponseEntity.ok(requirementSetService.getRequirementSetsByWorkspace(id, userId(jwt)));
     }
 
-    @Operation(summary = "Criar configuração de chatbot para um projeto do workspace")
-    @PostMapping("/{id}/chatbot/config")
-    public ResponseEntity<ChatbotConfigDTO> createChatbotConfig(
+    @Operation(summary = "Criar chatbot para um projeto do workspace")
+    @PostMapping("/{id}/chatbots")
+    public ResponseEntity<ChatbotConfigDTO> createChatbot(
             @PathVariable UUID id,
             @Valid @RequestBody CreateChatbotConfigRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceService.assertAdminOrOwnerById(id, userId(jwt));
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(chatbotConfigService.createOrUpdateConfig(request, id));
+                .body(chatbotConfigService.create(request, id, userId(jwt)));
     }
 
-    @Operation(summary = "Configuração ativa do chatbot no workspace")
-    @GetMapping("/{id}/chatbot/config/active")
-    public ResponseEntity<ChatbotConfigDTO> getActiveChatbotConfig(
+    @Operation(summary = "Listar chatbots do workspace")
+    @GetMapping("/{id}/chatbots")
+    public ResponseEntity<List<ChatbotConfigDTO>> listChatbots(
             @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        workspaceService.assertMemberById(id, userId(jwt));
-        return ResponseEntity.ok(chatbotConfigService.getActiveConfigByWorkspace(id));
+        return ResponseEntity.ok(chatbotConfigService.listByWorkspace(id, userId(jwt)));
     }
 
-    @Operation(summary = "Listar configurações de chatbot do workspace")
-    @GetMapping("/{id}/chatbot/config")
-    public ResponseEntity<List<ChatbotConfigDTO>> listChatbotConfigs(
-            @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+    @Operation(summary = "Listar chatbots de um projeto")
+    @GetMapping("/{id}/projects/{projectId}/chatbots")
+    public ResponseEntity<List<ChatbotConfigDTO>> listProjectChatbots(
+            @PathVariable UUID id,
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal Jwt jwt) {
         workspaceService.assertAdminOrOwnerById(id, userId(jwt));
-        return ResponseEntity.ok(chatbotConfigService.getConfigsByWorkspace(id));
+        return ResponseEntity.ok(chatbotConfigService.listByProject(id, projectId, userId(jwt)));
+    }
+
+    @Operation(summary = "Ativar ou desativar chatbot")
+    @PatchMapping("/{id}/chatbots/{chatbotId}/active")
+    public ResponseEntity<ChatbotConfigDTO> setChatbotActive(
+            @PathVariable UUID id,
+            @PathVariable UUID chatbotId,
+            @RequestParam boolean active,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(chatbotConfigService.setActive(id, chatbotId, active, userId(jwt)));
+    }
+
+    @Operation(summary = "Histórico completo de um chatbot")
+    @GetMapping("/{id}/chatbots/{chatbotId}/history")
+    public ResponseEntity<List<ChatMessageDTO>> getChatbotHistory(
+            @PathVariable UUID id,
+            @PathVariable UUID chatbotId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(chatService.getChatHistoryForManager(chatbotId, id, userId(jwt)));
     }
 
     @Operation(summary = "Histórico de perguntas do workspace")

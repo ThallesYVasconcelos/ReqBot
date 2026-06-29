@@ -16,6 +16,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
 
     List<ChatMessage> findByUserEmailOrderByAskedAtDesc(String userEmail);
 
+    List<ChatMessage> findByChatbot_IdOrderByAskedAtDesc(UUID chatbotId);
+
+    List<ChatMessage> findByChatbot_IdAndUserEmailOrderByAskedAtDesc(UUID chatbotId, String userEmail);
+
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.workspace.id = :workspaceId ORDER BY cm.askedAt DESC")
     List<ChatMessage> findByWorkspaceIdOrderByAskedAtDesc(@Param("workspaceId") UUID workspaceId);
 
