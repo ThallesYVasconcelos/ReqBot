@@ -6,20 +6,14 @@ import requirementsAssistantAI.domain.RequirementSet;
 import requirementsAssistantAI.infrastructure.RequirementHistoryRepository;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
 import requirementsAssistantAI.infrastructure.RequirementSetRepository;
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
-import dev.langchain4j.store.embedding.EmbeddingSearchResult;
-import dev.langchain4j.store.embedding.EmbeddingStore;
-import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
+import requirementsAssistantAI.infrastructure.EmbeddingSimilarityRepository;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import requirementsAssistantAI.dto.SaveRequirementRequest;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -49,29 +44,35 @@ public class RequirementService {
     private int maxApprovedResults;
     @Value("${ai.context.max-length:2500}")
     private int maxContextLength;
-    @Value("${ai.report.intention-filter.enabled:true}")
+    @Value("${ai.report.intention-filter.enabled:false}")
     private boolean intentionFilterEnabled;
 
     private final AssistantAiService assistantAiService;
     private final RequirementRepository requirementRepository;
     private final RequirementSetRepository requirementSetRepository;
     private final RequirementHistoryRepository requirementHistoryRepository;
-    private final EmbeddingModel embeddingModel;
-    private final EmbeddingStore<TextSegment> embeddingStore;
+    private final RagRetrievalService ragRetrievalService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final EmbeddingSimilarityRepository similarityRepository;
+
+    @Value("${ai.report.max-similar-pairs:300}")
+    private int maxSimilarPairs;
 
     public RequirementService(
             AssistantAiService assistantAiService,
             RequirementRepository requirementRepository,
             RequirementSetRepository requirementSetRepository,
             RequirementHistoryRepository requirementHistoryRepository,
-            @Lazy EmbeddingModel embeddingModel,
-            @Lazy EmbeddingStore<TextSegment> embeddingStore) {
+            RagRetrievalService ragRetrievalService,
+            ApplicationEventPublisher eventPublisher,
+            EmbeddingSimilarityRepository similarityRepository) {
         this.assistantAiService = assistantAiService;
         this.requirementRepository = requirementRepository;
         this.requirementSetRepository = requirementSetRepository;
         this.requirementHistoryRepository = requirementHistoryRepository;
-        this.embeddingModel = embeddingModel;
-        this.embeddingStore = embeddingStore;
+        this.ragRetrievalService = ragRetrievalService;
+        this.eventPublisher = eventPublisher;
+        this.similarityRepository = similarityRepository;
     }
 
     /**
@@ -103,7 +104,8 @@ public class RequirementService {
     private record AiRefinementResult(String analise, String refinedRequirementText, List<String> ambiguityWarnings) {}
 
     private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName, String requirementSetDescription) {
-        String relevantContext = findRelevantContext(rawRequirement, requirementSetId, requirementSetName, requirementSetDescription);
+        String relevantContext = findHybridContext(
+                rawRequirement, requirementSetId, requirementSetName, requirementSetDescription);
 
         String aiResponse = null;
         int retryCount = 0;
@@ -213,41 +215,10 @@ public class RequirementService {
 
         requirementHistoryRepository.save(new RequirementHistory(requirement, "CREATED"));
 
-        addToEmbeddingStore(requirement);
+        eventPublisher.publishEvent(new RequirementEmbeddingEvent(
+                requirement.getUuid(), RequirementEmbeddingEvent.Operation.UPSERT));
 
         return convertToDTO(requirement);
-    }
-
-    private void addToEmbeddingStore(Requirement requirement) {
-        try {
-            embeddingStore.removeAll(
-                    MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
-            );
-            String text = requirement.getRequirementId() + ": " + requirement.getRefinedRequirement();
-            Metadata meta = Metadata.from(
-                    java.util.Map.of(
-                            "project_id", requirement.getRequirementSet().getId().toString(),
-                            "requirement_uuid", requirement.getUuid().toString()
-                    ));
-            TextSegment segment = TextSegment.from(text, meta);
-            Embedding embedding = embeddingModel.embed(segment).content();
-            embeddingStore.add(embedding, segment);
-        } catch (OutOfMemoryError | Exception e) {
-            log.warn("Não foi possível indexar o requisito {} no embedding store: {}. " +
-                     "O requisito foi salvo no banco. Reindexe quando houver mais memória disponível.",
-                     requirement.getRequirementId(), e.getMessage());
-        }
-    }
-
-    private void removeFromEmbeddingStore(Requirement requirement) {
-        try {
-            embeddingStore.removeAll(
-                    MetadataFilterBuilder.metadataKey("requirement_uuid").isEqualTo(requirement.getUuid().toString())
-            );
-        } catch (OutOfMemoryError | Exception e) {
-            log.warn("Não foi possível remover o requisito {} do embedding store: {}",
-                     requirement.getRequirementId(), e.getMessage());
-        }
     }
 
     @Transactional(readOnly = true)
@@ -309,7 +280,8 @@ public class RequirementService {
         requirementHistoryRepository.save(new RequirementHistory(requirement, "UPDATED"));
 
         // Re-adiciona ao embedding store com texto atualizado (requisitos antigos podem ter versão desatualizada)
-        addToEmbeddingStore(requirement);
+        eventPublisher.publishEvent(new RequirementEmbeddingEvent(
+                requirement.getUuid(), RequirementEmbeddingEvent.Operation.UPSERT));
 
         return convertToDTO(requirement);
     }
@@ -319,13 +291,13 @@ public class RequirementService {
         Requirement requirement = requirementRepository.findById(Objects.requireNonNull(requirementUuid))
                 .orElseThrow(() -> new ResourceNotFoundException("Requirement", requirementUuid));
 
-        removeFromEmbeddingStore(requirement);
-
         requirementHistoryRepository.deleteAll(
             requirementHistoryRepository.findByRequirement_UuidOrderByCreatedAtDesc(requirementUuid)
         );
 
         requirementRepository.delete(requirement);
+        eventPublisher.publishEvent(new RequirementEmbeddingEvent(
+                requirementUuid, RequirementEmbeddingEvent.Operation.DELETE));
     }
 
     private RequirementDTO convertToDTO(Requirement requirement) {
@@ -344,60 +316,28 @@ public class RequirementService {
         );
     }
 
-    private String findRelevantContext(String userQuery, String projectId, String requirementSetName, String requirementSetDescription) {
-        Embedding queryEmbedding;
-        try {
-            queryEmbedding = embeddingModel.embed(userQuery).content();
-        } catch (OutOfMemoryError | Exception e) {
-            log.warn("Embedding indisponível ao buscar contexto: {}. Retornando contexto baseado apenas no projeto.", e.getMessage());
-            StringBuilder fallback = new StringBuilder();
-            if (requirementSetName != null) fallback.append("PROJETO: ").append(requirementSetName).append("\n");
-            if (requirementSetDescription != null) fallback.append("DESCRIÇÃO: ").append(requirementSetDescription);
-            return fallback.toString();
+    private String findHybridContext(
+            String userQuery,
+            String projectId,
+            String requirementSetName,
+            String requirementSetDescription) {
+        StringBuilder context = new StringBuilder();
+        if (requirementSetName != null && !requirementSetName.isBlank()) {
+            context.append("PROJETO/CONJUNTO DE REQUISITOS: ").append(requirementSetName).append('\n');
         }
-
-        StringBuilder contextBuilder = new StringBuilder();
-        if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
-            contextBuilder.append("PROJETO/CONJUNTO DE REQUISITOS: ").append(requirementSetName).append("\n");
+        if (requirementSetDescription != null && !requirementSetDescription.isBlank()) {
+            context.append("DESCRIÇÃO DO PROJETO: ").append(requirementSetDescription).append("\n\n");
         }
-        if (requirementSetDescription != null && !requirementSetDescription.trim().isEmpty()) {
-            contextBuilder.append("DESCRIÇÃO DO PROJETO: ").append(requirementSetDescription).append("\n\n");
-        } else if (requirementSetName != null && !requirementSetName.trim().isEmpty()) {
-            contextBuilder.append("\n");
+        String retrieved = ragRetrievalService.retrieve(
+                userQuery, UUID.fromString(projectId), maxApprovedResults, 0.7, maxContextLength);
+        if (retrieved.isBlank()) {
+            return context.append("Nenhum requisito anterior relevante encontrado neste projeto.").toString();
         }
-
-        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(maxApprovedResults)
-                .minScore(0.7)
-                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
-                .build();
-
-        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
-
-        if (!result.matches().isEmpty()) {
-            contextBuilder.append("REQUISITOS SALVOS NESTE PROJETO:\n");
-            int usedLength = contextBuilder.length();
-            for (var match : result.matches()) {
-                String text = match.embedded().text();
-                if (usedLength + text.length() + 5 > maxContextLength) {
-                    int remaining = maxContextLength - usedLength - 5;
-                    if (remaining > 50) {
-                        contextBuilder.append(text, 0, remaining).append("\n...");
-                    }
-                    break;
-                }
-                if (usedLength > (requirementSetName != null ? requirementSetName.length() + 50 : 0)) {
-                    contextBuilder.append("\n---\n");
-                }
-                contextBuilder.append(text);
-                usedLength = contextBuilder.length();
-            }
-        } else {
-            contextBuilder.append("Nenhum requisito anterior relevante encontrado neste projeto.\n");
-        }
-
-        return contextBuilder.toString();
+        int remaining = Math.max(0, maxContextLength - context.length());
+        context.append("REQUISITOS SALVOS NESTE PROJETO:\n");
+        remaining = Math.max(0, maxContextLength - context.length());
+        context.append(retrieved, 0, Math.min(retrieved.length(), remaining));
+        return context.toString();
     }
 
     private String generateNextRequirementId(@NonNull UUID requirementSetId) {
@@ -524,98 +464,55 @@ public class RequirementService {
     @Transactional(readOnly = true)
     public RequirementReportDTO getGeneralReport(@NonNull UUID requirementSetId) {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
-                .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
-
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
         List<Requirement> requirements = requirementRepository.findByRequirementSet_Id(requirementSetId);
         if (requirements.isEmpty()) {
             return new RequirementReportDTO(requirementSetId, requirementSet.getName(), List.of());
         }
 
-        double similarityThreshold = 0.85;
-        String projectIdStr = requirementSetId.toString();
+        Map<UUID, Requirement> byId = requirements.stream()
+                .collect(Collectors.toMap(Requirement::getUuid, requirement -> requirement));
+        Map<UUID, List<ConflictCandidate>> candidatesByRequirement = new HashMap<>();
+        int safeMaxPairs = Math.max(1, Math.min(maxSimilarPairs, 1000));
+        similarityRepository.findSimilarPairs(requirementSetId, 0.85, safeMaxPairs)
+                .forEach(pair -> {
+                    Requirement left = byId.get(pair.leftId());
+                    Requirement right = byId.get(pair.rightId());
+                    if (left != null && right != null) {
+                        candidatesByRequirement.computeIfAbsent(left.getUuid(), ignored -> new ArrayList<>())
+                                .add(new ConflictCandidate(left, right, pair.score()));
+                        candidatesByRequirement.computeIfAbsent(right.getUuid(), ignored -> new ArrayList<>())
+                                .add(new ConflictCandidate(right, left, pair.score()));
+                    }
+                });
 
-        ConcurrentHashMap<UUID, Embedding> embeddingCache = new ConcurrentHashMap<>();
-        try {
-            requirements.parallelStream().forEach(req -> {
-                String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
-                embeddingCache.put(req.getUuid(), embeddingModel.embed(queryText).content());
-            });
-        } catch (OutOfMemoryError | Exception e) {
-            log.warn("Embedding indisponível para geração de relatório: {}. Retornando relatório vazio de conflitos.", e.getMessage());
-            return new RequirementReportDTO(requirementSetId, requirementSet.getName(), List.of());
-        }
-
-        List<RequirementReportDTO.RequirementReportItemDTO> itemsWithProblems = new ArrayList<>();
-
-        for (Requirement req : requirements) {
-            Embedding queryEmbedding = embeddingCache.get(req.getUuid());
-            String queryText = req.getRequirementId() + ": " + req.getRefinedRequirement();
-
-            EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
-                    .queryEmbedding(queryEmbedding)
-                    .maxResults(20)
-                    .minScore(similarityThreshold)
-                    .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectIdStr))
-                    .build();
-
-            EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
-
-            List<ConflictCandidate> candidates = new ArrayList<>();
-            for (var match : result.matches()) {
-                String matchedUuid = match.embedded().metadata().getString("requirement_uuid");
-                if (matchedUuid != null && matchedUuid.equals(req.getUuid().toString())) continue;
-                if (queryText.equals(match.embedded().text())) continue;
-                Requirement conflicting = findRequirementByText(requirements, match.embedded().text());
-                if (conflicting != null) {
-                    candidates.add(new ConflictCandidate(req, conflicting, match.score()));
-                }
+        List<RequirementReportDTO.RequirementReportItemDTO> items = new ArrayList<>();
+        for (Requirement requirement : requirements) {
+            List<RequirementReportDTO.ConflictInfo> conflicts = filterByIntent(
+                    requirement,
+                    candidatesByRequirement.getOrDefault(requirement.getUuid(), List.of()));
+            boolean hasAmbiguity = requirement.getAmbiguityWarnings() != null
+                    && !requirement.getAmbiguityWarnings().isEmpty();
+            if (conflicts.isEmpty() && !hasAmbiguity) {
+                continue;
             }
-
-            List<RequirementReportDTO.ConflictInfo> conflicts = filterByIntent(req, candidates);
-
-            boolean hasConflicts = !conflicts.isEmpty();
-            boolean hasAmbiguity = req.getAmbiguityWarnings() != null && !req.getAmbiguityWarnings().isEmpty();
-
-            if (hasConflicts || hasAmbiguity) {
-                List<String> problems = new ArrayList<>();
-                List<String> resolutions = new ArrayList<>();
-                if (hasConflicts) {
-                    problems.add("Possível duplicata ou conflito com " + conflicts.size() + " requisito(s) similar(es)");
-                    resolutions.add("Revise os requisitos listados e decida se devem ser consolidados.");
-                    resolutions.add("Se forem duplicatas, mantenha apenas um e remova os demais.");
-                    resolutions.add("Se forem complementares, reescreva para deixar clara a diferença.");
-                }
-                if (hasAmbiguity) {
-                    problems.add("Ambiguidade identificada pela IA: " + req.getAmbiguityWarnings().size() + " ponto(s)");
-                    resolutions.add("Revise os pontos de ambiguidade e implemente as sugestões indicadas.");
-                    resolutions.add("Reescreva o requisito para deixar cada ponto mais claro e específico.");
-                }
-                itemsWithProblems.add(new RequirementReportDTO.RequirementReportItemDTO(
-                        req.getUuid(),
-                        req.getRequirementId(),
-                        req.getRefinedRequirement(),
-                        problems,
-                        conflicts,
-                        resolutions,
-                        hasAmbiguity ? req.getAmbiguityWarnings() : null
-                ));
+            List<String> problems = new ArrayList<>();
+            List<String> resolutions = new ArrayList<>();
+            if (!conflicts.isEmpty()) {
+                problems.add("Possível duplicata ou conflito com " + conflicts.size() + " requisito(s)");
+                resolutions.add("Revise os requisitos similares e consolide duplicatas quando necessário.");
             }
-        }
-
-        return new RequirementReportDTO(requirementSetId, requirementSet.getName(), itemsWithProblems);
-    }
-
-    private Requirement findRequirementByText(List<Requirement> requirements, String text) {
-        if (text == null || text.length() < 10) return null;
-        int colonIdx = text.indexOf(':');
-        if (colonIdx <= 0) return null;
-        String reqId = text.substring(0, colonIdx).trim();
-        for (Requirement r : requirements) {
-            if (reqId.equals(r.getRequirementId())) {
-                return r;
+            if (hasAmbiguity) {
+                problems.add("Ambiguidade identificada: " + requirement.getAmbiguityWarnings().size() + " ponto(s)");
+                resolutions.add("Reescreva os pontos indicados com critérios objetivos e verificáveis.");
             }
+            items.add(new RequirementReportDTO.RequirementReportItemDTO(
+                    requirement.getUuid(), requirement.getRequirementId(),
+                    requirement.getRefinedRequirement(), problems, conflicts, resolutions,
+                    hasAmbiguity ? requirement.getAmbiguityWarnings() : null));
         }
-        return null;
+        return new RequirementReportDTO(requirementSetId, requirementSet.getName(), items);
     }
 
     private record ConflictCandidate(Requirement req, Requirement conflicting, double score) {}
