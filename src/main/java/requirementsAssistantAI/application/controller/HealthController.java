@@ -10,8 +10,7 @@ import java.util.Map;
 
 /**
  * Endpoint público de health check.
- * Usado pelo UptimeRobot para manter o Render acordado (free tier dorme após 15 min).
- * Configure o UptimeRobot para fazer GET em /api/health a cada 5 minutos.
+ * Usado pelo provedor para verificar se a instância está saudável.
  */
 @RestController
 @RequestMapping("/api/health")

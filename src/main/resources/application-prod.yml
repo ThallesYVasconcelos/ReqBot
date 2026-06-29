@@ -1,0 +1,60 @@
+spring:
+  main:
+    lazy-initialization: true
+  jmx:
+    enabled: false
+  datasource:
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 0
+      connection-timeout: 20000
+      idle-timeout: 60000
+      max-lifetime: 600000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 10
+        order_inserts: true
+        order_updates: true
+
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
+  tomcat:
+    threads:
+      max: 32
+      min-spare: 2
+    max-connections: 100
+    accept-count: 50
+
+ai:
+  embedding:
+    queue-capacity: 25
+  rag:
+    literal-sufficient-results: 2
+  context:
+    max-approved-results: 4
+    max-length: 2500
+  chat:
+    max-rag-results: 3
+    max-history-results: 200
+    cache:
+      enabled: true
+      max-entries: 50
+      ttl-minutes: 10
+  analytics:
+    max-source-messages: 500
+    max-history-results: 200
+  report:
+    intention-filter:
+      enabled: false
+    max-similar-pairs: 300
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN

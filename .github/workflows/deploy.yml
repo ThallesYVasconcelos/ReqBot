@@ -1,53 +1,22 @@
-name: Deploy to Render
+name: CI
 
 on:
   push:
     branches: ["main"]
-
-env:
-  SERVICE_NAME: requirements-assistant
+  pull_request:
+    branches: ["main"]
 
 jobs:
-  build-and-deploy:
+  test:
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Render pode fazer deploy direto do GitHub (sem precisar de imagem Docker)
-      # mas também aceita via Deploy Hook — que é mais rápido e simples.
-      #
-      # RENDER_DEPLOY_HOOK_URL: obtenha em Render → seu serviço → Settings → Deploy Hook
-      # Cole a URL completa como secret. Formato:
-      # https://api.render.com/deploy/srv-XXXXX?key=YYYYYYY
-      - name: Acionar deploy no Render via Deploy Hook
-        run: |
-          HOOK="${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
-          if [ -z "$HOOK" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL não configurado."
-            echo "Configure em: GitHub repo → Settings → Secrets → Actions → New secret"
-            echo "O valor vem de: Render → seu serviço → Settings → Deploy Hook"
-            exit 1
-          fi
-          RESPONSE=$(curl -s -o /tmp/render_response.json -w "%{http_code}" \
-            -X POST "$HOOK" \
-            -H "Content-Type: application/json")
-          echo "HTTP Status: $RESPONSE"
-          cat /tmp/render_response.json
-          if [ "$RESPONSE" != "200" ] && [ "$RESPONSE" != "201" ]; then
-            echo "::error::Deploy Hook retornou HTTP $RESPONSE. Verifique o secret RENDER_DEPLOY_HOOK_URL."
-            exit 1
-          fi
-          echo "Deploy acionado com sucesso no Render!"
-
-      - name: Aguardar início do deploy
-        run: |
-          echo "Deploy em andamento no Render..."
-          echo "Acompanhe em: https://dashboard.render.com"
-          echo "O Render fará build do Dockerfile e iniciará o serviço automaticamente."
-          echo "Tempo estimado: 3-5 minutos (build Maven + inicialização Spring Boot)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Testar
+        run: mvn --batch-mode clean test

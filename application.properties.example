@@ -20,12 +20,14 @@ gemini.api-key=SUA_GEMINI_API_KEY_AQUI
 gemini.model=gemini-2.5-flash
 
 # --- Embeddings (Gemini API — usa a MESMA gemini.api-key / GEMINI_API_KEY) ---
-# RAG, relatório de conflitos e ranking de perguntas chamam a API de embedding (sem ONNX local).
+# A API de embedding é usada para indexação assíncrona e fallback semântico do RAG.
+# Busca literal, ranking e relatórios reutilizam o banco e não geram embeddings em lote.
 # A tabela Postgres "embeddings.embedding" deve ser vector(768). Novos deploys: schema já 768.
 # Bases antigas (384): rode a migração supabase/migrations/20250427120000_embeddings_vector_768_gemini.sql
 # Se usar só OpenAI para chat, ainda precisa de GEMINI_API_KEY para embeddings OU ajuste o código.
 ai.embedding.model=gemini-embedding-001
 ai.embedding.dimension=768
+ai.embedding.queue-capacity=25
 
 # --- OpenAI (fallback — usado quando GEMINI_API_KEY não está configurada) ---
 # Obtenha em: https://platform.openai.com/api-keys
@@ -43,10 +45,15 @@ ai.chat.max-rag-results=3
 ai.chat.cache.enabled=true
 ai.chat.cache.max-entries=100
 ai.chat.cache.ttl-minutes=15
+ai.chat.max-history-results=200
+ai.rag.literal-sufficient-results=2
+ai.analytics.max-source-messages=500
+ai.analytics.max-history-results=200
 
 # Filtro de intenção: reduz falsos positivos mas adiciona 1 chamada LLM.
 # Desabilite para relatórios mais rápidos em ambientes com muitos requisitos.
-ai.report.intention-filter.enabled=true
+ai.report.intention-filter.enabled=false
+ai.report.max-similar-pairs=300
 
 # =============================================================================
 # BANCO DE DADOS — PostgreSQL / Supabase
@@ -72,8 +79,8 @@ spring.datasource.driver-class-name=org.postgresql.Driver
 # =============================================================================
 # Supabase Transaction Pooler aceita até 15 conexões simultâneas no free tier.
 # Mantenha maximum-pool-size <= 5 por instância para não exceder o limite.
-spring.datasource.hikari.maximum-pool-size=5
-spring.datasource.hikari.minimum-idle=2
+spring.datasource.hikari.maximum-pool-size=3
+spring.datasource.hikari.minimum-idle=0
 # Conexão ociosa é descartada após 5 min (evita timeout do pooler)
 spring.datasource.hikari.idle-timeout=300000
 # Testa a conexão antes de usar (evita "broken pipe" após inatividade)
@@ -116,8 +123,6 @@ auth.jwt.ttl-seconds=3600
 # Google OAuth — Client ID do console.cloud.google.com
 auth.google.client-id=
 
-# Emails com perfil ADMIN (separados por vírgula)
-auth.admin.emails=admin@exemplo.com
 
 # =============================================================================
 # CORS — Origens permitidas

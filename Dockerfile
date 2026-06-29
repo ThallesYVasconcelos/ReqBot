@@ -25,5 +25,6 @@ ENTRYPOINT ["java", \
   "-XX:MaxRAMPercentage=55.0", \
   "-XX:MaxMetaspaceSize=100m", \
   "-XX:+UseSerialGC", \
+  "-XX:+ExitOnOutOfMemoryError", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-jar", "app.jar"]

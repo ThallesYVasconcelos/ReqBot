@@ -43,8 +43,13 @@ README*
 scripts/
 
 # Config files (use environment variables or volumes)
+src/main/resources/application.properties
+**/application-local.properties
+**/application-*-local.properties
 application-dev.properties
 application-prod.properties
+.env
+.env.*
 
 # Test files
 src/test/
