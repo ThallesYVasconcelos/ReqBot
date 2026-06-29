@@ -1,8 +1,5 @@
 package requirementsAssistantAI.application.service;
 
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.EmbeddingStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -14,36 +11,30 @@ import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.domain.WorkspaceType;
 import requirementsAssistantAI.dto.ChatResponseDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
-import requirementsAssistantAI.infrastructure.RequirementRepository;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatServiceTest {
 
-    private RequirementRepository requirementRepository;
     private ChatMessageRepository chatMessageRepository;
     private ChatAiService chatAiService;
     private ChatbotAccessService accessService;
+    private RagRetrievalService ragRetrievalService;
     private ChatService chatService;
 
     @BeforeEach
     void setUp() {
-        requirementRepository = mock(RequirementRepository.class);
         chatMessageRepository = mock(ChatMessageRepository.class);
         chatAiService = mock(ChatAiService.class);
         accessService = mock(ChatbotAccessService.class);
-        EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
-        @SuppressWarnings("unchecked")
-        EmbeddingStore<TextSegment> embeddingStore = mock(EmbeddingStore.class);
+        ragRetrievalService = mock(RagRetrievalService.class);
 
         chatService = new ChatService(
-                requirementRepository, chatMessageRepository, chatAiService,
-                embeddingModel, embeddingStore, accessService);
+                chatMessageRepository, chatAiService, accessService, ragRetrievalService);
     }
 
     @Test
@@ -53,7 +44,8 @@ class ChatServiceTest {
         ChatbotConfig chatbot = chatbot(chatbotId);
         UUID projectId = chatbot.getRequirementSet().getId();
         when(accessService.requireChatAccess(chatbotId, userId)).thenReturn(chatbot);
-        when(requirementRepository.countByRequirementSetId(projectId)).thenReturn(0L);
+        when(ragRetrievalService.retrieve(any(), eq(projectId), anyInt(), anyDouble(), anyInt()))
+                .thenReturn("Nenhum requisito salvo encontrado para este projeto.");
         when(chatAiService.answerQuestion(
                 eq("Qual regra vale para a cor da caixa?"),
                 eq("Nenhum requisito salvo encontrado para este projeto.")))
@@ -77,8 +69,8 @@ class ChatServiceTest {
         UUID chatbotId = UUID.randomUUID();
         ChatbotConfig chatbot = chatbot(chatbotId);
         when(accessService.requireChatAccess(chatbotId, userId)).thenReturn(chatbot);
-        when(requirementRepository.countByRequirementSetId(chatbot.getRequirementSet().getId()))
-                .thenReturn(0L);
+        when(ragRetrievalService.retrieve(any(), any(), anyInt(), anyDouble(), anyInt()))
+                .thenReturn("Contexto");
         when(chatAiService.answerQuestion(any(), any()))
                 .thenThrow(new RuntimeException("IA indisponível"));
 

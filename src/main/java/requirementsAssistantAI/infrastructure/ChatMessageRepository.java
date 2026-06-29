@@ -4,6 +4,7 @@ import requirementsAssistantAI.domain.ChatMessage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,12 +17,14 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
 
     List<ChatMessage> findByUserEmailOrderByAskedAtDesc(String userEmail);
 
-    List<ChatMessage> findByChatbot_IdOrderByAskedAtDesc(UUID chatbotId);
+    List<ChatMessage> findByChatbot_IdOrderByAskedAtDesc(UUID chatbotId, Pageable pageable);
 
-    List<ChatMessage> findByChatbot_IdAndUserEmailOrderByAskedAtDesc(UUID chatbotId, String userEmail);
+    List<ChatMessage> findByChatbot_IdAndUserEmailOrderByAskedAtDesc(
+            UUID chatbotId, String userEmail, Pageable pageable);
 
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.workspace.id = :workspaceId ORDER BY cm.askedAt DESC")
-    List<ChatMessage> findByWorkspaceIdOrderByAskedAtDesc(@Param("workspaceId") UUID workspaceId);
+    List<ChatMessage> findByWorkspaceIdOrderByAskedAtDesc(
+            @Param("workspaceId") UUID workspaceId, Pageable pageable);
 
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.requirementSet.id = :setId AND cm.userEmail = :email ORDER BY cm.askedAt DESC")
     List<ChatMessage> findByRequirementSetAndUser(@Param("setId") UUID setId, @Param("email") String email);

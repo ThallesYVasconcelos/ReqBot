@@ -1,12 +1,7 @@
 package requirementsAssistantAI.application.service;
 
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.*;
-import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import requirementsAssistantAI.application.ports.ChatAiService;
@@ -17,14 +12,12 @@ import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.dto.ChatMessageDTO;
 import requirementsAssistantAI.dto.ChatResponseDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
-import requirementsAssistantAI.infrastructure.RequirementRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 @Service
 public class ChatService {
@@ -37,29 +30,25 @@ public class ChatService {
     private int cacheMaxEntries;
     @Value("${ai.chat.cache.ttl-minutes:15}")
     private int cacheTtlMinutes;
+    @Value("${ai.chat.max-history-results:200}")
+    private int maxHistoryResults;
 
     private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 
-    private final RequirementRepository requirementRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatAiService chatAiService;
-    private final EmbeddingModel embeddingModel;
-    private final EmbeddingStore<TextSegment> embeddingStore;
     private final ChatbotAccessService accessService;
+    private final RagRetrievalService ragRetrievalService;
 
     public ChatService(
-            RequirementRepository requirementRepository,
             ChatMessageRepository chatMessageRepository,
             ChatAiService chatAiService,
-            @Lazy EmbeddingModel embeddingModel,
-            @Lazy EmbeddingStore<TextSegment> embeddingStore,
-            ChatbotAccessService accessService) {
-        this.requirementRepository = requirementRepository;
+            ChatbotAccessService accessService,
+            RagRetrievalService ragRetrievalService) {
         this.chatMessageRepository = chatMessageRepository;
         this.chatAiService = chatAiService;
-        this.embeddingModel = embeddingModel;
-        this.embeddingStore = embeddingStore;
         this.accessService = accessService;
+        this.ragRetrievalService = ragRetrievalService;
     }
 
     @Transactional
@@ -87,7 +76,11 @@ public class ChatService {
         }
 
         try {
-            String context = findRelevantContext(question, projectId);
+            String context = ragRetrievalService.retrieve(
+                    question, project.getId(), maxRagResults, 0.6, 2500);
+            if (context.isBlank()) {
+                context = "Nenhum requisito salvo ou contexto relevante encontrado para este projeto.";
+            }
             String rawAnswer = chatAiService.answerQuestion(question, context);
             String answer = rawAnswer == null || rawAnswer.isBlank()
                     ? "Desculpe, não consegui processar sua pergunta. Tente reformulá-la."
@@ -110,7 +103,8 @@ public class ChatService {
             UUID chatbotId, UUID userId, String userEmail) {
         accessService.requireChatAccess(chatbotId, userId);
         return chatMessageRepository
-                .findByChatbot_IdAndUserEmailOrderByAskedAtDesc(chatbotId, userEmail)
+                .findByChatbot_IdAndUserEmailOrderByAskedAtDesc(
+                        chatbotId, userEmail, PageRequest.of(0, safeHistoryLimit()))
                 .stream().map(this::toDTO).toList();
     }
 
@@ -118,7 +112,8 @@ public class ChatService {
     public List<ChatMessageDTO> getChatHistoryForManager(
             UUID chatbotId, UUID workspaceId, UUID requesterUserId) {
         accessService.requireManager(workspaceId, chatbotId, requesterUserId);
-        return chatMessageRepository.findByChatbot_IdOrderByAskedAtDesc(chatbotId)
+        return chatMessageRepository.findByChatbot_IdOrderByAskedAtDesc(
+                        chatbotId, PageRequest.of(0, safeHistoryLimit()))
                 .stream().map(this::toDTO).toList();
     }
 
@@ -134,38 +129,6 @@ public class ChatService {
         } catch (Exception ignored) {
             // Histórico é best-effort e não deve derrubar uma resposta válida.
         }
-    }
-
-    private String findRelevantContext(String question, String projectId) {
-        if (requirementRepository.countByRequirementSetId(UUID.fromString(projectId)) == 0) {
-            return "Nenhum requisito salvo encontrado para este projeto.";
-        }
-        Embedding queryEmbedding = embeddingModel.embed(question).content();
-        EmbeddingSearchRequest semanticRequest = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(maxRagResults)
-                .minScore(0.6)
-                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
-                .build();
-        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(semanticRequest);
-        if (!result.matches().isEmpty()) {
-            return joinContext(result);
-        }
-        EmbeddingSearchRequest fallbackRequest = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(maxRagResults)
-                .filter(MetadataFilterBuilder.metadataKey("project_id").isEqualTo(projectId))
-                .build();
-        EmbeddingSearchResult<TextSegment> fallback = embeddingStore.search(fallbackRequest);
-        return fallback.matches().isEmpty()
-                ? "Nenhum contexto relevante encontrado para a pergunta."
-                : joinContext(fallback);
-    }
-
-    private String joinContext(EmbeddingSearchResult<TextSegment> result) {
-        return result.matches().stream()
-                .map(match -> stripRequirementIdFromText(match.embedded().text()))
-                .collect(Collectors.joining("\n---\n"));
     }
 
     private ChatMessageDTO toDTO(ChatMessage message) {
@@ -197,12 +160,12 @@ public class ChatService {
         return start == null || end == null ? "24 horas" : start + " às " + end;
     }
 
-    private String stripRequirementIdFromText(String text) {
-        return text == null ? "" : text.replaceFirst("^[A-Z]{2,3}-\\d+\\s*:\\s*", "").trim();
-    }
-
     private String sanitizeAnswer(String answer) {
         return answer == null ? "" : answer.replaceAll("\\b[A-Z]{2,4}-\\d+\\b", "[requisito]");
+    }
+
+    private int safeHistoryLimit() {
+        return Math.max(1, Math.min(maxHistoryResults, 1000));
     }
 
     private static class CachedAnswer {

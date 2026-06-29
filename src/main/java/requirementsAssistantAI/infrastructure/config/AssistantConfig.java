@@ -115,8 +115,9 @@ public class AssistantConfig {
                     .datasource(dataSource)
                     .table("embeddings")
                     .dimension(embeddingDimension)
-                    .useIndex(true)
-                    .indexListSize(100)
+                    // O índice HNSW é gerenciado por migration; evita criar IVFFlat no startup.
+                    .useIndex(false)
+                    .createTable(false)
                     .build();
         }
         return PgVectorEmbeddingStore.builder()
@@ -127,8 +128,8 @@ public class AssistantConfig {
                 .password(pgPassword)
                 .table("embeddings")
                 .dimension(embeddingDimension)
-                .useIndex(true)
-                .indexListSize(100)
+                .useIndex(false)
+                .createTable(false)
                 .build();
     }
 

@@ -1,8 +1,5 @@
 package requirementsAssistantAI.application.service;
 
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.model.output.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import requirementsAssistantAI.application.exception.ForbiddenException;
@@ -19,11 +16,11 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class WorkspaceServiceTest {
@@ -33,7 +30,6 @@ class WorkspaceServiceTest {
     private AppUserRepository appUserRepository;
     private WorkspaceAuthorizationService authorizationService;
     private ChatMessageRepository chatMessageRepository;
-    private EmbeddingModel embeddingModel;
     private WorkspaceService workspaceService;
 
     @BeforeEach
@@ -43,10 +39,9 @@ class WorkspaceServiceTest {
         appUserRepository = mock(AppUserRepository.class);
         authorizationService = mock(WorkspaceAuthorizationService.class);
         chatMessageRepository = mock(ChatMessageRepository.class);
-        embeddingModel = mock(EmbeddingModel.class);
         workspaceService = new WorkspaceService(
                 workspaceRepository, memberRepository, appUserRepository,
-                authorizationService, chatMessageRepository, embeddingModel);
+                authorizationService, chatMessageRepository);
     }
 
     @Test
@@ -89,13 +84,9 @@ class WorkspaceServiceTest {
         ChatMessage b = message("aluno-b@example.com", "A caixa do medicamento muda de cor?", 11);
         ChatMessage c = message("aluno-c@example.com", "Como redefinir a senha?", 12);
 
-        when(chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId))
+        when(chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(
+                eq(workspaceId), any(Pageable.class)))
                 .thenReturn(List.of(c, b, a));
-        when(embeddingModel.embed(anyString())).thenAnswer(invocation -> {
-            String text = invocation.getArgument(0);
-            return Response.from(Embedding.from(text.contains("medicamento")
-                    ? new float[]{1, 0} : new float[]{0, 1}));
-        });
 
         List<ChatQuestionClusterDTO> result = workspaceService.getAnonymousQuestionRanking(
                 workspaceId, ownerId, 10, 0.82);
@@ -117,7 +108,7 @@ class WorkspaceServiceTest {
         assertThatThrownBy(() -> workspaceService.getAnonymousQuestionRanking(
                 workspaceId, outsiderId, 10, 0.82))
                 .isInstanceOf(ForbiddenException.class);
-        verifyNoInteractions(chatMessageRepository, embeddingModel);
+        verifyNoInteractions(chatMessageRepository);
     }
 
     private AppUser user(UUID id, String email) {

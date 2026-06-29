@@ -1,8 +1,7 @@
 package requirementsAssistantAI.application.service;
 
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,21 +41,26 @@ public class WorkspaceService {
     private final AppUserRepository appUserRepository;
     private final WorkspaceAuthorizationService authorizationService;
     private final ChatMessageRepository chatMessageRepository;
-    private final EmbeddingModel embeddingModel;
+    @Value("${ai.analytics.max-source-messages:500}")
+    private int maxSourceMessages;
+    @Value("${ai.analytics.max-history-results:200}")
+    private int maxHistoryResults;
+
+    private static final Set<String> STOP_WORDS = Set.of(
+            "a", "as", "o", "os", "de", "da", "das", "do", "dos", "e", "em", "no", "na",
+            "nos", "nas", "um", "uma", "para", "por", "com", "que", "qual", "como", "ao");
 
     public WorkspaceService(
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository memberRepository,
             AppUserRepository appUserRepository,
             WorkspaceAuthorizationService authorizationService,
-            ChatMessageRepository chatMessageRepository,
-            @Lazy EmbeddingModel embeddingModel) {
+            ChatMessageRepository chatMessageRepository) {
         this.workspaceRepository = workspaceRepository;
         this.memberRepository = memberRepository;
         this.appUserRepository = appUserRepository;
         this.authorizationService = authorizationService;
         this.chatMessageRepository = chatMessageRepository;
-        this.embeddingModel = embeddingModel;
     }
 
     @Transactional
@@ -88,7 +93,8 @@ public class WorkspaceService {
     @Transactional(readOnly = true)
     public List<ChatMessageDTO> getChatHistory(@NonNull UUID workspaceId, @NonNull UUID requesterUserId) {
         authorizationService.requireOwnerOrAdmin(workspaceId, requesterUserId);
-        return chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
+        return chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(
+                        workspaceId, PageRequest.of(0, safeHistoryLimit()))
                 .stream()
                 .map(this::toChatMessageDTO)
                 .collect(Collectors.toList());
@@ -103,8 +109,9 @@ public class WorkspaceService {
         authorizationService.requireOwnerOrAdmin(workspaceId, requesterUserId);
 
         int safeLimit = Math.max(1, Math.min(limit, 50));
-        double safeThreshold = Math.max(0.70, Math.min(similarityThreshold, 0.98));
-        List<ChatMessage> messages = chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(workspaceId)
+        double safeThreshold = Math.max(0.50, Math.min(similarityThreshold, 0.98));
+        List<ChatMessage> messages = chatMessageRepository.findByWorkspaceIdOrderByAskedAtDesc(
+                        workspaceId, PageRequest.of(0, safeSourceLimit()))
                 .stream()
                 .filter(message -> message.getQuestion() != null && !message.getQuestion().isBlank())
                 .toList();
@@ -116,18 +123,14 @@ public class WorkspaceService {
                 continue;
             }
 
-            float[] vector;
-            try {
-                Embedding embedding = embeddingModel.embed(normalizedQuestion).content();
-                vector = embedding.vector();
-            } catch (Exception exception) {
-                return List.of();
-            }
+            Set<String> tokens = significantTokens(normalizedQuestion);
 
             QuestionCluster bestCluster = null;
             double bestSimilarity = 0.0;
             for (QuestionCluster cluster : clusters) {
-                double similarity = cosineSimilarity(vector, cluster.representativeVector);
+                double similarity = lexicalSimilarity(
+                        normalizedQuestion, tokens,
+                        cluster.normalizedRepresentative, cluster.representativeTokens);
                 if (similarity >= safeThreshold && similarity > bestSimilarity) {
                     bestCluster = cluster;
                     bestSimilarity = similarity;
@@ -135,7 +138,8 @@ public class WorkspaceService {
             }
 
             if (bestCluster == null) {
-                clusters.add(new QuestionCluster(message.getQuestion(), vector, message.getAskedAt()));
+                clusters.add(new QuestionCluster(
+                        message.getQuestion(), normalizedQuestion, tokens, message.getAskedAt()));
             } else {
                 bestCluster.add(message.getQuestion(), message.getAskedAt(), bestSimilarity);
             }
@@ -228,36 +232,57 @@ public class WorkspaceService {
                 .trim();
     }
 
-    private double cosineSimilarity(float[] first, float[] second) {
-        if (first == null || second == null || first.length == 0 || first.length != second.length) {
+    private Set<String> significantTokens(String normalizedQuestion) {
+        Set<String> tokens = new LinkedHashSet<>();
+        Arrays.stream(normalizedQuestion.split("\\s+"))
+                .filter(token -> token.length() >= 3)
+                .filter(token -> !STOP_WORDS.contains(token))
+                .forEach(tokens::add);
+        return tokens;
+    }
+
+    private double lexicalSimilarity(
+            String firstText, Set<String> first,
+            String secondText, Set<String> second) {
+        if (firstText.equals(secondText)) {
+            return 1.0;
+        }
+        if (first.isEmpty() || second.isEmpty()) {
             return 0.0;
         }
-        double dot = 0.0;
-        double firstNorm = 0.0;
-        double secondNorm = 0.0;
-        for (int index = 0; index < first.length; index++) {
-            dot += first[index] * second[index];
-            firstNorm += first[index] * first[index];
-            secondNorm += second[index] * second[index];
-        }
-        if (firstNorm == 0.0 || secondNorm == 0.0) {
-            return 0.0;
-        }
-        return dot / (Math.sqrt(firstNorm) * Math.sqrt(secondNorm));
+        long intersection = first.stream().filter(second::contains).count();
+        int union = first.size() + second.size() - (int) intersection;
+        double jaccard = union == 0 ? 0.0 : intersection / (double) union;
+        double containment = intersection / (double) Math.min(first.size(), second.size());
+        return 0.6 * containment + 0.4 * jaccard;
+    }
+
+    private int safeSourceLimit() {
+        return Math.max(20, Math.min(maxSourceMessages, 1000));
+    }
+
+    private int safeHistoryLimit() {
+        return Math.max(1, Math.min(maxHistoryResults, 1000));
     }
 
     private static class QuestionCluster {
         private final String representativeQuestion;
-        private final float[] representativeVector;
+        private final String normalizedRepresentative;
+        private final Set<String> representativeTokens;
         private final List<String> questions = new ArrayList<>();
         private LocalDateTime firstAskedAt;
         private LocalDateTime lastAskedAt;
         private double similaritySum;
         private int similarityCount;
 
-        QuestionCluster(String representativeQuestion, float[] representativeVector, LocalDateTime askedAt) {
+        QuestionCluster(
+                String representativeQuestion,
+                String normalizedRepresentative,
+                Set<String> representativeTokens,
+                LocalDateTime askedAt) {
             this.representativeQuestion = representativeQuestion;
-            this.representativeVector = representativeVector;
+            this.normalizedRepresentative = normalizedRepresentative;
+            this.representativeTokens = Set.copyOf(representativeTokens);
             this.questions.add(representativeQuestion);
             this.firstAskedAt = askedAt;
             this.lastAskedAt = askedAt;
