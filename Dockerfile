@@ -17,6 +17,12 @@ USER spring:spring
 
 COPY --from=build /app/target/*.jar app.jar
 
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV SPRING_DATA_JPA_REPOSITORIES_BOOTSTRAP_MODE=lazy
+ENV SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+ENV SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.PostgreSQLDialect
+ENV SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.PostgreSQLDialect
+
 EXPOSE 8080
 
 ENTRYPOINT ["java", \
