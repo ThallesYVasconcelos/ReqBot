@@ -3,7 +3,7 @@ set -eu
 
 echo "[BOOT] Starting ReqBot (PORT=${PORT:-unset}, PROFILE=${SPRING_PROFILES_ACTIVE:-unset})"
 
-exec java \
+exec /opt/java/openjdk/bin/java \
   -XX:TieredStopAtLevel=1 \
   -Xss256k \
   -XX:MaxRAMPercentage=55.0 \
