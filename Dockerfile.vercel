@@ -13,17 +13,14 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 RUN groupadd -r spring && useradd -r -g spring spring
-USER spring:spring
 
 COPY --from=build /app/target/*.jar app.jar
+COPY docker/vercel-entrypoint.sh /app/vercel-entrypoint.sh
+
+RUN chmod 755 /app/vercel-entrypoint.sh
+
+USER spring:spring
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", \
-  "-XX:TieredStopAtLevel=1", \
-  "-Xss256k", \
-  "-XX:MaxRAMPercentage=55.0", \
-  "-XX:+UseSerialGC", \
-  "-XX:+ExitOnOutOfMemoryError", \
-  "-Djava.security.egd=file:/dev/./urandom", \
-  "-jar", "app.jar"]
+CMD ["/app/vercel-entrypoint.sh"]
