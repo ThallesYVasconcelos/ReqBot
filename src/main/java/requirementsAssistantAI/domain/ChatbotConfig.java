@@ -35,7 +35,7 @@ public class ChatbotConfig {
     private RequirementSet requirementSet;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "workspace_id")
+    @JoinColumn(name = "workspace_id", nullable = false)
     private Workspace workspace;
 
     @Column(name = "start_time")
