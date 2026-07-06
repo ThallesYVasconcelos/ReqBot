@@ -33,7 +33,8 @@ logs/
 Thumbs.db
 
 # Docker
-docker/
+docker/*
+!docker/vercel-entrypoint.sh
 
 # Documentation
 *.md
