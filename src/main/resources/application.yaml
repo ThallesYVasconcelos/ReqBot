@@ -7,3 +7,12 @@ spring:
     hikari:
       maximum-pool-size: 3
       minimum-idle: 0
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: lazy
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
