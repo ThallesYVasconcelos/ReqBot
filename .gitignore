@@ -56,6 +56,7 @@ src/main/resources/application.properties
 # Variáveis de ambiente
 .env
 .env.*
+!docker/.env.example
 
 # Chaves, certificados e secrets
 *.pem

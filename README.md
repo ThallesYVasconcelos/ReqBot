@@ -1,36 +1,18 @@
 # ReqBot
 
-API Spring Boot para gestão de requisitos e chatbots RAG com Gemini, PostgreSQL e PGVector.
-
-## Modelo de acesso
-
-- Toda identidade possui papel global `USER`.
-- `OWNER` e `ADMIN` são papéis vinculados a um workspace.
-- O `OWNER` cria o workspace, convida e remove administradores.
-- `OWNER` e `ADMIN` criam projetos, requisitos e múltiplos chatbots ativos.
-- Um usuário final não pertence ao workspace: ele entra em um chatbot usando o código recebido.
-- Desativar um chatbot bloqueia o uso do código e as novas perguntas sem apagar associações.
-
-## Arquitetura do RAG
-
-1. Requisitos são persistidos no PostgreSQL.
-2. Após o commit, uma fila limitada a uma thread gera ou atualiza o embedding.
-3. A busca textual do PostgreSQL é executada primeiro.
-4. A API de embeddings é chamada somente quando os resultados literais não forem suficientes.
-5. Chatbots do mesmo projeto compartilham requisitos, índice vetorial e cache de respostas.
-
-Os relatórios de similaridade reutilizam vetores já armazenados. O ranking de perguntas usa
-similaridade lexical local e não gera um embedding para cada mensagem.
+API Spring Boot para gestão de requisitos e chatbots RAG com Gemini, PostgreSQL/Supabase e PGVector.
 
 ## Tecnologias
 
 - Java 17 e Spring Boot 4
-- PostgreSQL 17 e PGVector
+- PostgreSQL 17 com PGVector
 - Gemini Chat e `gemini-embedding-001`
 - Google OAuth e JWT
 - Docker, Supabase e Render
 
-## Execução local
+## Rodando localmente
+
+Suba apenas o banco local:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d postgres
@@ -38,87 +20,165 @@ cp application.properties.example application.properties
 mvn spring-boot:run
 ```
 
-A API local usa `http://localhost:8081` quando configurada pelo arquivo local.
-
-Para executar tudo em Docker:
+Ou suba aplicação + banco em Docker:
 
 ```bash
 cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-## Configuração obrigatória
+Health check local:
 
-Não versione secrets. Use propriedades locais ignoradas pelo Git ou variáveis de ambiente:
+```bash
+curl http://localhost:8080/api/health
+```
 
-```text
+## Variáveis obrigatórias
+
+No Render, configure estas variáveis no serviço web:
+
+```env
+SPRING_PROFILES_ACTIVE=prod
 GEMINI_API_KEY=
-SPRING_DATASOURCE_URL=jdbc:postgresql://HOST:6543/postgres?sslmode=require&prepareThreshold=0
-SPRING_DATASOURCE_USERNAME=
+SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
+SPRING_DATASOURCE_USERNAME=postgres.SEUPROJECTREF
 SPRING_DATASOURCE_PASSWORD=
 AUTH_JWT_SECRET=
 AUTH_GOOGLE_CLIENT_ID=
 CORS_ALLOWED_ORIGINS=
 ```
 
-Para o Supabase, prefira o Transaction Pooler e mantenha `prepareThreshold=0` na URL JDBC.
+Notas importantes:
+
+- `PORT` não precisa ser criado manualmente no Render. A plataforma fornece essa variável e o app usa `server.port=${PORT:8080}`.
+- `SPRING_PROFILES_ACTIVE=prod` ativa `application-prod.yml`, que reduz conexões, threads e memória para produção.
+- `GEMINI_API_KEY` é obrigatória para chat e embeddings. Pegue em <https://aistudio.google.com/apikey>.
+- `SPRING_DATASOURCE_URL` deve usar o Transaction Pooler do Supabase, porta `6543`, com `prepareThreshold=0`.
+- `SPRING_DATASOURCE_USERNAME` no Supabase pooler normalmente é `postgres.PROJECT_REF`, por exemplo `postgres.qujyvhwiubaxvposstxi`.
+- `SPRING_DATASOURCE_PASSWORD` é a senha do banco Supabase.
+- `AUTH_JWT_SECRET` deve ter no mínimo 32 caracteres aleatórios.
+- `AUTH_GOOGLE_CLIENT_ID` vem do Google Cloud Console, no OAuth Client ID do frontend.
+- `CORS_ALLOWED_ORIGINS` deve conter a URL do seu frontend, por exemplo `https://seu-frontend.onrender.com`. Separe múltiplas origens por vírgula.
+
+## Deploy no Render
+
+Este projeto já está preparado para Render com `render.yaml` e `Dockerfile`.
+
+### Opção recomendada: Blueprint
+
+1. Faça push do repositório para o GitHub.
+2. No Render, clique em **New > Blueprint**.
+3. Conecte este repositório.
+4. Confirme o blueprint detectado em `render.yaml`.
+5. Preencha as variáveis marcadas como secret.
+6. Crie o serviço.
+7. Aguarde o build e o health check `/api/health`.
+
+### Opção manual: Web Service
+
+1. No Render, clique em **New > Web Service**.
+2. Escolha este repositório.
+3. Em **Runtime**, escolha **Docker**.
+4. Em **Dockerfile Path**, use:
+
+```text
+./Dockerfile
+```
+
+5. Em **Health Check Path**, use:
+
+```text
+/api/health
+```
+
+6. Configure as variáveis de ambiente listadas acima.
+7. Clique em **Create Web Service**.
+
+## Como saber se deu certo
+
+Depois do deploy, abra:
+
+```text
+https://SUA-URL-DO-RENDER/api/health
+```
+
+Resposta esperada:
+
+```json
+{
+  "status": "UP",
+  "service": "requirements-assistant"
+}
+```
+
+Também teste:
+
+```text
+https://SUA-URL-DO-RENDER/swagger-ui.html
+```
+
+Se `/api/health` responder, a aplicação subiu. Se o Swagger abrir, a API está servindo rotas HTTP corretamente.
+
+## Onde achar cada valor
+
+### Gemini
+
+Google AI Studio:
+
+```text
+https://aistudio.google.com/apikey
+```
+
+Crie uma API key e coloque em `GEMINI_API_KEY`.
+
+### Supabase
+
+No painel do Supabase:
+
+1. Abra seu projeto.
+2. Vá em **Project Settings > Database**.
+3. Procure **Connection string**.
+4. Use a opção de pooler/transaction pooler.
+
+Formato esperado:
+
+```text
+jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
+```
+
+Usuário esperado:
+
+```text
+postgres.SEUPROJECTREF
+```
+
+### Google OAuth
+
+No Google Cloud Console:
+
+1. Vá em **APIs & Services > Credentials**.
+2. Abra ou crie um **OAuth 2.0 Client ID**.
+3. Copie o **Client ID**.
+4. Coloque em `AUTH_GOOGLE_CLIENT_ID`.
+
+## GitHub Secrets x Render
+
+Secrets do GitHub não são usados automaticamente pelo Render.
+
+Eles só influenciam o deploy se um workflow do GitHub Actions mandar esses valores para algum lugar. O workflow atual deste projeto apenas roda testes (`mvn clean test`). Portanto, para o backend no Render, as variáveis que importam são as configuradas no painel do Render.
 
 ## Endpoints principais
 
-### Autenticação
-
-- `POST /api/auth/google`
-
-### Workspaces e administradores
-
-- `POST /api/workspaces`
-- `GET /api/workspaces`
-- `GET /api/workspaces/{workspaceId}`
-- `POST /api/workspaces/{workspaceId}/admin-invitations`
-- `POST /api/workspace-admin-invitations/accept`
-- `DELETE /api/workspaces/{workspaceId}/admins/{adminUserId}`
-
-### Projetos e requisitos
-
-- `POST /api/workspaces/{workspaceId}/requirement-sets`
-- `GET /api/workspaces/{workspaceId}/requirement-sets`
-- `POST /api/requirements/refine`
-- `POST /api/requirements/save`
-- `GET /api/requirements?requirementSetId={projectId}`
-- `GET /api/requirements/report?requirementSetId={projectId}`
-
-### Chatbots
-
-- `POST /api/workspaces/{workspaceId}/chatbots`
-- `GET /api/workspaces/{workspaceId}/chatbots`
-- `PATCH /api/workspaces/{workspaceId}/chatbots/{chatbotId}/active?active=false`
-- `POST /api/chatbots/join`
-- `GET /api/chatbots/me`
-- `POST /api/chatbots/{chatbotId}/chat/ask`
-- `GET /api/chatbots/{chatbotId}/chat/history/me`
-
-Swagger: `/swagger-ui.html` · OpenAPI: `/v3/api-docs` · Health: `/api/health`
+- Health: `GET /api/health`
+- Swagger: `/swagger-ui.html`
+- OpenAPI: `/v3/api-docs`
+- Login Google: `POST /api/auth/google`
+- Workspaces: `/api/workspaces`
+- Requisitos: `/api/requirements`
+- Chatbots: `/api/chatbots`
 
 ## Testes
 
 ```bash
 mvn clean test
 ```
-
-## Deploy gratuito no Render
-
-O arquivo `render.yaml` define um web service Docker gratuito e o perfil
-`application-prod.yml` limita conexões, threads, históricos, cache e fila de embeddings.
-
-1. No Render, escolha **New > Blueprint** e conecte este repositório.
-2. Preencha os secrets solicitados pelo blueprint.
-3. Use a URL do Transaction Pooler do Supabase em `SPRING_DATASOURCE_URL`.
-4. Inclua a origem do frontend em `CORS_ALLOWED_ORIGINS`.
-5. Crie o serviço e aguarde o health check `/api/health` ficar saudável.
-
-Serviços gratuitos do Render hibernam após 15 minutos sem tráfego e compartilham a cota
-mensal de 750 horas. O primeiro acesso após a hibernação terá cold start.
-
-O blueprint usa `checksPass`: o Render só inicia o deploy depois que o workflow de CI passar.
-
-Documentação oficial: [Render Free](https://render.com/docs/free).
