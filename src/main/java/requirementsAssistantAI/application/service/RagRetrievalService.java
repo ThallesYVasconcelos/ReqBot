@@ -16,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import requirementsAssistantAI.domain.Requirement;
 import requirementsAssistantAI.infrastructure.RequirementRepository;
 
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -63,6 +66,11 @@ public class RagRetrievalService {
             semanticMatches(query, projectId, safeResults, minSemanticScore)
                     .forEach(contexts::add);
         }
+        if (contexts.size() < Math.max(1, literalSufficientResults)) {
+            lexicalFallbackMatches(query, projectId, safeResults).stream()
+                    .map(this::requirementText)
+                    .forEach(contexts::add);
+        }
 
         return joinWithinLimit(contexts, safeResults, safeLength);
     }
@@ -77,6 +85,74 @@ public class RagRetrievalService {
             log.warn("Busca textual indisponível para o projeto {}: {}", projectId, exception.getMessage());
             return List.of();
         }
+    }
+
+    private List<Requirement> lexicalFallbackMatches(String query, UUID projectId, int limit) {
+        Set<String> queryTokens = normalizedSearchTokens(query);
+        if (queryTokens.isEmpty()) {
+            return List.of();
+        }
+        List<ScoredRequirement> scored = new ArrayList<>();
+        for (Requirement requirement : requirementRepository.findByRequirementSet_Id(projectId)) {
+            Set<String> requirementTokens = normalizedSearchTokens(requirementText(requirement));
+            long matched = queryTokens.stream()
+                    .filter(queryToken -> matchesAnyRequirementToken(queryToken, requirementTokens))
+                    .count();
+            if (matched > 0) {
+                scored.add(new ScoredRequirement(requirement, matched / (double) queryTokens.size()));
+            }
+        }
+        return scored.stream()
+                .sorted(Comparator.comparingDouble(ScoredRequirement::score).reversed())
+                .limit(limit)
+                .map(ScoredRequirement::requirement)
+                .toList();
+    }
+
+    private Set<String> normalizedSearchTokens(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        Set<String> tokens = new LinkedHashSet<>();
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("[^a-z0-9\\s-]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        for (String rawToken : normalized.split("\\s+")) {
+            String token = rootToken(rawToken);
+            if (token.length() >= 3 && !isStopWord(token)) {
+                tokens.add(token);
+                if ("adm".equals(token) || "admin".equals(token)) {
+                    tokens.add("administr");
+                }
+            }
+        }
+        return tokens;
+    }
+
+    private String rootToken(String token) {
+        String value = token.replaceAll("[^a-z0-9]", "");
+        if (value.length() <= 4) {
+            return value;
+        }
+        value = value.replaceAll("(adores|adora|ador|acoes|acao|mente|ando|endo|indo|ados|adas|ado|ada|ar|er|ir|es|s)$", "");
+        return value.length() >= 4 ? value : token;
+    }
+
+    private boolean isStopWord(String token) {
+        return Set.of(
+                "como", "deve", "devo", "qual", "quais", "isso", "esse", "essa", "este", "esta",
+                "para", "por", "com", "que", "uma", "uns", "das", "dos", "nas", "nos", "ser")
+                .contains(token);
+    }
+
+    private boolean matchesAnyRequirementToken(String queryToken, Set<String> requirementTokens) {
+        return requirementTokens.stream()
+                .anyMatch(requirementToken -> requirementToken.equals(queryToken)
+                        || requirementToken.startsWith(queryToken)
+                        || queryToken.startsWith(requirementToken));
     }
 
     private List<String> semanticMatches(
@@ -130,4 +206,6 @@ public class RagRetrievalService {
         }
         return value.toString();
     }
+
+    private record ScoredRequirement(Requirement requirement, double score) {}
 }

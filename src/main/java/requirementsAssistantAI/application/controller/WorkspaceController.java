@@ -127,6 +127,25 @@ public class WorkspaceController {
         return ResponseEntity.ok(chatbotConfigService.setActive(id, chatbotId, active, userId(jwt)));
     }
 
+    @Operation(summary = "Ver codigo de acesso do chatbot")
+    @GetMapping("/{id}/chatbots/{chatbotId}/access-code")
+    public ResponseEntity<ChatbotConfigDTO> getChatbotAccessCode(
+            @PathVariable UUID id,
+            @PathVariable UUID chatbotId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(chatbotConfigService.getAccessCode(id, chatbotId, userId(jwt)));
+    }
+
+    @Operation(summary = "Excluir chatbot do workspace")
+    @DeleteMapping("/{id}/chatbots/{chatbotId}")
+    public ResponseEntity<Void> deleteChatbot(
+            @PathVariable UUID id,
+            @PathVariable UUID chatbotId,
+            @AuthenticationPrincipal Jwt jwt) {
+        chatbotConfigService.delete(id, chatbotId, userId(jwt));
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "Histórico completo de um chatbot")
     @GetMapping("/{id}/chatbots/{chatbotId}/history")
     public ResponseEntity<List<ChatMessageDTO>> getChatbotHistory(

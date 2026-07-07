@@ -100,6 +100,7 @@ CREATE INDEX idx_requirement_history_requirement_uuid ON requirement_history(req
 CREATE TABLE chatbot_config (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     is_active BOOLEAN NOT NULL DEFAULT true,
+    access_code VARCHAR(11),
     requirement_set_id UUID NOT NULL REFERENCES requirement_sets(id) ON DELETE CASCADE,
     start_time TIME,
     end_time TIME,

@@ -58,6 +58,7 @@ public class ChatbotConfigService {
         ChatbotConfig chatbot = new ChatbotConfig(
                 request.getName().trim(), codeService.hash(rawCode), project,
                 request.getStartTime(), request.getEndTime());
+        chatbot.setAccessCode(rawCode);
         chatbot.setShowRequirementsToUsers(Boolean.TRUE.equals(request.getShowRequirementsToUsers()));
         return toDTO(chatbotRepository.save(chatbot), rawCode);
     }
@@ -89,6 +90,18 @@ public class ChatbotConfigService {
         ChatbotConfig chatbot = accessService.requireManager(workspaceId, chatbotId, requesterUserId);
         chatbot.setIsActive(active);
         return toDTO(chatbotRepository.save(chatbot), null);
+    }
+
+    @Transactional(readOnly = true)
+    public ChatbotConfigDTO getAccessCode(UUID workspaceId, UUID chatbotId, UUID requesterUserId) {
+        ChatbotConfig chatbot = accessService.requireManager(workspaceId, chatbotId, requesterUserId);
+        return toDTO(chatbot, null);
+    }
+
+    @Transactional
+    public void delete(UUID workspaceId, UUID chatbotId, UUID requesterUserId) {
+        ChatbotConfig chatbot = accessService.requireManager(workspaceId, chatbotId, requesterUserId);
+        chatbotRepository.delete(chatbot);
     }
 
     /** Compatibilidade com rota global bloqueada em SecurityConfig. */
@@ -151,7 +164,9 @@ public class ChatbotConfigService {
         RequirementSet project = chatbot.getRequirementSet();
         Workspace workspace = chatbot.getWorkspace();
         return new ChatbotConfigDTO(
-                chatbot.getId(), chatbot.getName(), rawCode, chatbot.getIsActive(),
+                chatbot.getId(), chatbot.getName(),
+                rawCode != null ? rawCode : chatbot.getAccessCode(),
+                chatbot.getIsActive(),
                 project != null ? project.getId() : null,
                 project != null ? project.getName() : null,
                 workspace != null ? workspace.getId() : null,

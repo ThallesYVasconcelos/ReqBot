@@ -27,6 +27,9 @@ public class ChatbotConfig {
     @Column(name = "access_code_hash", nullable = false, unique = true, length = 64)
     private String accessCodeHash;
 
+    @Column(name = "access_code", length = 11)
+    private String accessCode;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
@@ -92,6 +95,9 @@ public class ChatbotConfig {
 
     public String getAccessCodeHash() { return accessCodeHash; }
     public void setAccessCodeHash(String accessCodeHash) { this.accessCodeHash = accessCodeHash; }
+
+    public String getAccessCode() { return accessCode; }
+    public void setAccessCode(String accessCode) { this.accessCode = accessCode; }
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }

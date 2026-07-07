@@ -24,6 +24,7 @@ class ChatbotConfigServiceTest {
     private ChatbotConfigRepository chatbotRepository;
     private RequirementSetRepository projectRepository;
     private WorkspaceAuthorizationService authorizationService;
+    private ChatbotAccessService accessService;
     private ChatbotConfigService service;
 
     @BeforeEach
@@ -31,9 +32,10 @@ class ChatbotConfigServiceTest {
         chatbotRepository = mock(ChatbotConfigRepository.class);
         projectRepository = mock(RequirementSetRepository.class);
         authorizationService = mock(WorkspaceAuthorizationService.class);
+        accessService = mock(ChatbotAccessService.class);
         service = new ChatbotConfigService(
                 chatbotRepository, projectRepository, authorizationService,
-                mock(ChatbotAccessService.class), new ChatbotCodeService());
+                accessService, new ChatbotCodeService());
     }
 
     @Test
@@ -67,5 +69,46 @@ class ChatbotConfigServiceTest {
         assertThat(captor.getValue().getRequirementSet()).isSameAs(project);
         verify(authorizationService).requireOwnerOrAdmin(workspaceId, userId);
         verifyNoMoreInteractions(authorizationService);
+    }
+
+    @Test
+    void createShouldStoreCodeSoItCanBeShownAgain() {
+        UUID workspaceId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Workspace workspace = new Workspace("Workspace", "DescriÃ§Ã£o", WorkspaceType.ACADEMIC);
+        workspace.setId(workspaceId);
+        RequirementSet project = new RequirementSet("Projeto", "DescriÃ§Ã£o", workspace);
+        project.setId(projectId);
+        CreateChatbotConfigRequest request = new CreateChatbotConfigRequest();
+        request.setName("Chatbot");
+        request.setRequirementSetId(projectId);
+
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        when(chatbotRepository.existsByAccessCodeHash(any())).thenReturn(false);
+        when(chatbotRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ChatbotConfigDTO created = service.create(request, workspaceId, userId);
+
+        ArgumentCaptor<ChatbotConfig> captor = ArgumentCaptor.forClass(ChatbotConfig.class);
+        verify(chatbotRepository).save(captor.capture());
+        assertThat(captor.getValue().getAccessCode()).isEqualTo(created.getAccessCode());
+        assertThat(created.getAccessCode()).matches("[A-Z2-9]{5}-[A-Z2-9]{5}");
+    }
+
+    @Test
+    void getAccessCodeShouldReturnExistingSingleCode() {
+        UUID workspaceId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID chatbotId = UUID.randomUUID();
+        ChatbotConfig chatbot = new ChatbotConfig("Chatbot", "a".repeat(64), null, null, null);
+        chatbot.setId(chatbotId);
+        chatbot.setAccessCode("ABCDE-23456");
+        when(accessService.requireManager(workspaceId, chatbotId, userId)).thenReturn(chatbot);
+
+        ChatbotConfigDTO result = service.getAccessCode(workspaceId, chatbotId, userId);
+
+        assertThat(result.getAccessCode()).isEqualTo("ABCDE-23456");
+        verifyNoInteractions(chatbotRepository);
     }
 }
