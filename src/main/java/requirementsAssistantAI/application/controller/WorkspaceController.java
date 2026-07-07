@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import requirementsAssistantAI.application.service.ChatService;
 import requirementsAssistantAI.application.service.ChatbotConfigService;
+import requirementsAssistantAI.application.service.ProjectEnrollmentService;
 import requirementsAssistantAI.application.service.RequirementSetService;
 import requirementsAssistantAI.application.service.WorkspaceService;
 import requirementsAssistantAI.dto.*;
@@ -25,16 +26,19 @@ public class WorkspaceController {
     private final WorkspaceService workspaceService;
     private final RequirementSetService requirementSetService;
     private final ChatbotConfigService chatbotConfigService;
+    private final ProjectEnrollmentService projectEnrollmentService;
     private final ChatService chatService;
 
     public WorkspaceController(
             WorkspaceService workspaceService,
             RequirementSetService requirementSetService,
             ChatbotConfigService chatbotConfigService,
+            ProjectEnrollmentService projectEnrollmentService,
             ChatService chatService) {
         this.workspaceService = workspaceService;
         this.requirementSetService = requirementSetService;
         this.chatbotConfigService = chatbotConfigService;
+        this.projectEnrollmentService = projectEnrollmentService;
         this.chatService = chatService;
     }
 
@@ -104,6 +108,15 @@ public class WorkspaceController {
         return ResponseEntity.ok(chatbotConfigService.listByProject(id, projectId, userId(jwt)));
     }
 
+    @Operation(summary = "Listar usuarios que entraram em um projeto via chatbot")
+    @GetMapping("/{id}/requirement-sets/{projectId}/users")
+    public ResponseEntity<List<ProjectUserDTO>> listProjectUsers(
+            @PathVariable UUID id,
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(projectEnrollmentService.listUsers(id, projectId, userId(jwt)));
+    }
+
     @Operation(summary = "Ativar ou desativar chatbot")
     @PatchMapping("/{id}/chatbots/{chatbotId}/active")
     public ResponseEntity<ChatbotConfigDTO> setChatbotActive(
@@ -121,6 +134,18 @@ public class WorkspaceController {
             @PathVariable UUID chatbotId,
             @AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(chatService.getChatHistoryForManager(chatbotId, id, userId(jwt)));
+    }
+
+    @Operation(summary = "Ranking anonimo de perguntas similares de um chatbot")
+    @GetMapping("/{id}/chatbots/{chatbotId}/question-ranking")
+    public ResponseEntity<List<ChatQuestionClusterDTO>> getChatbotQuestionRanking(
+            @PathVariable UUID id,
+            @PathVariable UUID chatbotId,
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "0.82") double similarityThreshold,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(chatService.getQuestionRankingForManager(
+                id, chatbotId, userId(jwt), limit, similarityThreshold));
     }
 
     @Operation(summary = "Histórico de perguntas do workspace")

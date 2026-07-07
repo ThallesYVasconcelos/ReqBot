@@ -21,16 +21,19 @@ public class ChatbotEnrollmentService {
     private final ChatbotConfigRepository chatbotRepository;
     private final ChatbotEnrollmentRepository enrollmentRepository;
     private final AppUserRepository userRepository;
+    private final ProjectEnrollmentService projectEnrollmentService;
 
     public ChatbotEnrollmentService(
             ChatbotCodeService codeService,
             ChatbotConfigRepository chatbotRepository,
             ChatbotEnrollmentRepository enrollmentRepository,
-            AppUserRepository userRepository) {
+            AppUserRepository userRepository,
+            ProjectEnrollmentService projectEnrollmentService) {
         this.codeService = codeService;
         this.chatbotRepository = chatbotRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
+        this.projectEnrollmentService = projectEnrollmentService;
     }
 
     @Transactional
@@ -43,6 +46,7 @@ public class ChatbotEnrollmentService {
         ChatbotEnrollment enrollment = enrollmentRepository
                 .findByChatbot_IdAndUser_Id(chatbot.getId(), userId)
                 .orElseGet(() -> enrollmentRepository.save(new ChatbotEnrollment(chatbot, user)));
+        projectEnrollmentService.ensureEnrollment(chatbot.getRequirementSet(), user, chatbot);
         return toDTO(enrollment);
     }
 

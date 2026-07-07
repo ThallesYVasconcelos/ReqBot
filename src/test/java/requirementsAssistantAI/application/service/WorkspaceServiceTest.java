@@ -64,6 +64,7 @@ class WorkspaceServiceTest {
             member.setCreatedAt(LocalDateTime.now());
             return member;
         });
+        when(memberRepository.existsByUser_IdAndRole(ownerId, WorkspaceRole.OWNER)).thenReturn(false);
 
         WorkspaceDTO result = workspaceService.createWorkspace(request, ownerId);
 
@@ -74,6 +75,22 @@ class WorkspaceServiceTest {
         });
         verify(memberRepository).save(argThat(member ->
                 member.getUser() == owner && member.getRole() == WorkspaceRole.OWNER));
+    }
+
+    @Test
+    void createWorkspaceShouldRejectUserThatAlreadyOwnsOneWorkspace() {
+        UUID ownerId = UUID.randomUUID();
+        AppUser owner = user(ownerId, "professor@example.com");
+        CreateWorkspaceRequest request = new CreateWorkspaceRequest(
+                "Outro workspace", "NÃ£o deve criar", WorkspaceType.PROFESSIONAL);
+
+        when(appUserRepository.findById(ownerId)).thenReturn(Optional.of(owner));
+        when(memberRepository.existsByUser_IdAndRole(ownerId, WorkspaceRole.OWNER)).thenReturn(true);
+
+        assertThatThrownBy(() -> workspaceService.createWorkspace(request, ownerId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("apenas um workspace");
+        verifyNoInteractions(workspaceRepository);
     }
 
     @Test

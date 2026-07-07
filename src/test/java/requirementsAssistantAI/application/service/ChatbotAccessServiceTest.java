@@ -5,6 +5,7 @@ import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.domain.*;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.ChatbotEnrollmentRepository;
+import requirementsAssistantAI.infrastructure.ProjectEnrollmentRepository;
 import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
 
 import java.util.Optional;
@@ -21,8 +22,9 @@ class ChatbotAccessServiceTest {
         ChatbotConfigRepository chatbotRepository = mock(ChatbotConfigRepository.class);
         ChatbotEnrollmentRepository enrollmentRepository = mock(ChatbotEnrollmentRepository.class);
         WorkspaceMemberRepository memberRepository = mock(WorkspaceMemberRepository.class);
+        ProjectEnrollmentRepository projectEnrollmentRepository = mock(ProjectEnrollmentRepository.class);
         ChatbotAccessService service = new ChatbotAccessService(
-                chatbotRepository, enrollmentRepository, memberRepository,
+                chatbotRepository, enrollmentRepository, memberRepository, projectEnrollmentRepository,
                 mock(WorkspaceAuthorizationService.class));
         UUID userId = UUID.randomUUID();
         ChatbotConfig chatbot = chatbot(UUID.randomUUID());
@@ -35,12 +37,33 @@ class ChatbotAccessServiceTest {
     }
 
     @Test
+    void projectEnrollmentShouldGrantAccessToProjectChatbots() {
+        ChatbotConfigRepository chatbotRepository = mock(ChatbotConfigRepository.class);
+        ChatbotEnrollmentRepository enrollmentRepository = mock(ChatbotEnrollmentRepository.class);
+        WorkspaceMemberRepository memberRepository = mock(WorkspaceMemberRepository.class);
+        ProjectEnrollmentRepository projectEnrollmentRepository = mock(ProjectEnrollmentRepository.class);
+        ChatbotAccessService service = new ChatbotAccessService(
+                chatbotRepository, enrollmentRepository, memberRepository, projectEnrollmentRepository,
+                mock(WorkspaceAuthorizationService.class));
+        UUID userId = UUID.randomUUID();
+        ChatbotConfig chatbot = chatbot(UUID.randomUUID());
+        when(chatbotRepository.findByIdWithProjectAndWorkspace(chatbot.getId()))
+                .thenReturn(Optional.of(chatbot));
+        when(projectEnrollmentRepository.existsByProject_IdAndUser_Id(
+                chatbot.getRequirementSet().getId(), userId))
+                .thenReturn(true);
+
+        assertThat(service.requireChatAccess(chatbot.getId(), userId)).isSameAs(chatbot);
+    }
+
+    @Test
     void userWithoutEnrollmentShouldBeDenied() {
         ChatbotConfigRepository chatbotRepository = mock(ChatbotConfigRepository.class);
         ChatbotEnrollmentRepository enrollmentRepository = mock(ChatbotEnrollmentRepository.class);
         WorkspaceMemberRepository memberRepository = mock(WorkspaceMemberRepository.class);
+        ProjectEnrollmentRepository projectEnrollmentRepository = mock(ProjectEnrollmentRepository.class);
         ChatbotAccessService service = new ChatbotAccessService(
-                chatbotRepository, enrollmentRepository, memberRepository,
+                chatbotRepository, enrollmentRepository, memberRepository, projectEnrollmentRepository,
                 mock(WorkspaceAuthorizationService.class));
         UUID userId = UUID.randomUUID();
         ChatbotConfig chatbot = chatbot(UUID.randomUUID());
@@ -49,13 +72,13 @@ class ChatbotAccessServiceTest {
 
         assertThatThrownBy(() -> service.requireChatAccess(chatbot.getId(), userId))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("código");
+                .hasMessageContaining("Informe");
     }
 
     private ChatbotConfig chatbot(UUID id) {
-        Workspace workspace = new Workspace("Workspace", "Descrição", WorkspaceType.PROFESSIONAL);
+        Workspace workspace = new Workspace("Workspace", "DescriÃ§Ã£o", WorkspaceType.PROFESSIONAL);
         workspace.setId(UUID.randomUUID());
-        RequirementSet project = new RequirementSet("Projeto", "Descrição", workspace);
+        RequirementSet project = new RequirementSet("Projeto", "DescriÃ§Ã£o", workspace);
         project.setId(UUID.randomUUID());
         ChatbotConfig chatbot = new ChatbotConfig("Chatbot", "a".repeat(64), project, null, null);
         chatbot.setId(id);

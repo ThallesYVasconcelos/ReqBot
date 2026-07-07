@@ -67,6 +67,9 @@ public class WorkspaceService {
     public WorkspaceDTO createWorkspace(@NonNull CreateWorkspaceRequest request, @NonNull UUID ownerUserId) {
         AppUser owner = appUserRepository.findById(ownerUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", ownerUserId));
+        if (memberRepository.existsByUser_IdAndRole(ownerUserId, WorkspaceRole.OWNER)) {
+            throw new IllegalStateException("Cada owner pode criar apenas um workspace.");
+        }
         Workspace workspace = workspaceRepository.save(
                 new Workspace(request.name(), request.description(), request.type()));
         WorkspaceMember ownerMember = memberRepository.save(

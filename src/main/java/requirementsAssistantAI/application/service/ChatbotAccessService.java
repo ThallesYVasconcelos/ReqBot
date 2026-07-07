@@ -7,6 +7,7 @@ import requirementsAssistantAI.application.exception.ResourceNotFoundException;
 import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.infrastructure.ChatbotConfigRepository;
 import requirementsAssistantAI.infrastructure.ChatbotEnrollmentRepository;
+import requirementsAssistantAI.infrastructure.ProjectEnrollmentRepository;
 import requirementsAssistantAI.infrastructure.WorkspaceMemberRepository;
 
 import java.util.UUID;
@@ -17,16 +18,19 @@ public class ChatbotAccessService {
     private final ChatbotConfigRepository chatbotRepository;
     private final ChatbotEnrollmentRepository enrollmentRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final ProjectEnrollmentRepository projectEnrollmentRepository;
     private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public ChatbotAccessService(
             ChatbotConfigRepository chatbotRepository,
             ChatbotEnrollmentRepository enrollmentRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
+            ProjectEnrollmentRepository projectEnrollmentRepository,
             WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.chatbotRepository = chatbotRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
+        this.projectEnrollmentRepository = projectEnrollmentRepository;
         this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
@@ -50,7 +54,10 @@ public class ChatbotAccessService {
         boolean manager = workspaceMemberRepository
                 .existsByWorkspace_IdAndUser_Id(workspaceId, userId);
         boolean enrolled = enrollmentRepository.existsByChatbot_IdAndUser_Id(chatbotId, userId);
-        if (!manager && !enrolled) {
+        boolean projectEnrolled = chatbot.getRequirementSet() != null
+                && projectEnrollmentRepository.existsByProject_IdAndUser_Id(
+                        chatbot.getRequirementSet().getId(), userId);
+        if (!manager && !enrolled && !projectEnrolled) {
             throw new ForbiddenException("Informe o código para entrar neste chatbot.");
         }
         return chatbot;

@@ -10,12 +10,19 @@ import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.domain.RequirementSet;
 import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.dto.ChatMessageDTO;
+import requirementsAssistantAI.dto.ChatQuestionClusterDTO;
 import requirementsAssistantAI.dto.ChatResponseDTO;
 import requirementsAssistantAI.infrastructure.ChatMessageRepository;
 
+import java.text.Normalizer;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,8 +39,14 @@ public class ChatService {
     private int cacheTtlMinutes;
     @Value("${ai.chat.max-history-results:200}")
     private int maxHistoryResults;
+    @Value("${ai.analytics.max-source-messages:500}")
+    private int maxSourceMessages;
 
     private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
+
+    private static final Set<String> STOP_WORDS = Set.of(
+            "a", "as", "o", "os", "de", "da", "das", "do", "dos", "e", "em", "no", "na",
+            "nos", "nas", "um", "uma", "para", "por", "com", "que", "qual", "como", "ao");
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatAiService chatAiService;
@@ -117,6 +130,21 @@ public class ChatService {
                 .stream().map(this::toDTO).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ChatQuestionClusterDTO> getQuestionRankingForManager(
+            UUID workspaceId,
+            UUID chatbotId,
+            UUID requesterUserId,
+            int limit,
+            double similarityThreshold) {
+        accessService.requireManager(workspaceId, chatbotId, requesterUserId);
+        return rankQuestions(
+                chatMessageRepository.findQuestionsByChatbotIdOrderByAskedAtDesc(
+                        chatbotId, PageRequest.of(0, safeSourceLimit())),
+                limit,
+                similarityThreshold);
+    }
+
     private void persistMessage(
             String userEmail, String question, String answer,
             boolean fromCache, boolean chatbotAvailable, ChatbotConfig chatbot) {
@@ -168,6 +196,94 @@ public class ChatService {
         return Math.max(1, Math.min(maxHistoryResults, 1000));
     }
 
+    private int safeSourceLimit() {
+        return Math.max(20, Math.min(maxSourceMessages, 1000));
+    }
+
+    private List<ChatQuestionClusterDTO> rankQuestions(
+            List<ChatMessage> messages,
+            int limit,
+            double similarityThreshold) {
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        double safeThreshold = Math.max(0.50, Math.min(similarityThreshold, 0.98));
+        List<QuestionCluster> clusters = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            String normalizedQuestion = normalizeQuestionForAnalytics(message.getQuestion());
+            if (normalizedQuestion.isBlank()) {
+                continue;
+            }
+            Set<String> tokens = significantTokens(normalizedQuestion);
+            QuestionCluster bestCluster = null;
+            double bestSimilarity = 0.0;
+            for (QuestionCluster cluster : clusters) {
+                double similarity = lexicalSimilarity(
+                        normalizedQuestion, tokens,
+                        cluster.normalizedRepresentative, cluster.representativeTokens);
+                if (similarity >= safeThreshold && similarity > bestSimilarity) {
+                    bestCluster = cluster;
+                    bestSimilarity = similarity;
+                }
+            }
+            if (bestCluster == null) {
+                clusters.add(new QuestionCluster(
+                        message.getQuestion(), normalizedQuestion, tokens, message.getAskedAt()));
+            } else {
+                bestCluster.add(message.getQuestion(), message.getAskedAt(), bestSimilarity);
+            }
+        }
+        clusters.sort(
+                Comparator.comparingInt(QuestionCluster::size).reversed()
+                        .thenComparing(QuestionCluster::lastAskedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        List<ChatQuestionClusterDTO> ranking = new ArrayList<>();
+        for (int index = 0; index < Math.min(safeLimit, clusters.size()); index++) {
+            QuestionCluster cluster = clusters.get(index);
+            ranking.add(new ChatQuestionClusterDTO(
+                    index + 1,
+                    cluster.representativeQuestion,
+                    cluster.size(),
+                    cluster.sampleQuestions(),
+                    cluster.firstAskedAt,
+                    cluster.lastAskedAt,
+                    cluster.averageSimilarity(),
+                    safeThreshold));
+        }
+        return ranking;
+    }
+
+    private String normalizeQuestionForAnalytics(String question) {
+        return question == null ? "" : Normalizer.normalize(question, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private Set<String> significantTokens(String normalizedQuestion) {
+        Set<String> tokens = new LinkedHashSet<>();
+        Arrays.stream(normalizedQuestion.split("\\s+"))
+                .filter(token -> token.length() >= 3)
+                .filter(token -> !STOP_WORDS.contains(token))
+                .forEach(tokens::add);
+        return tokens;
+    }
+
+    private double lexicalSimilarity(
+            String firstText, Set<String> first,
+            String secondText, Set<String> second) {
+        if (firstText.equals(secondText)) {
+            return 1.0;
+        }
+        if (first.isEmpty() || second.isEmpty()) {
+            return 0.0;
+        }
+        long intersection = first.stream().filter(second::contains).count();
+        int union = first.size() + second.size() - (int) intersection;
+        double jaccard = union == 0 ? 0.0 : intersection / (double) union;
+        double containment = intersection / (double) Math.min(first.size(), second.size());
+        return 0.6 * containment + 0.4 * jaccard;
+    }
+
     private static class CachedAnswer {
         private final String answer;
         private final LocalDateTime createdAt;
@@ -179,6 +295,61 @@ public class ChatService {
 
         private boolean isExpired(int ttlMinutes) {
             return createdAt.plusMinutes(ttlMinutes).isBefore(LocalDateTime.now());
+        }
+    }
+
+    private static class QuestionCluster {
+        private final String representativeQuestion;
+        private final String normalizedRepresentative;
+        private final Set<String> representativeTokens;
+        private final List<String> questions = new ArrayList<>();
+        private LocalDateTime firstAskedAt;
+        private LocalDateTime lastAskedAt;
+        private double similaritySum;
+        private int similarityCount;
+
+        QuestionCluster(
+                String representativeQuestion,
+                String normalizedRepresentative,
+                Set<String> representativeTokens,
+                LocalDateTime askedAt) {
+            this.representativeQuestion = representativeQuestion;
+            this.normalizedRepresentative = normalizedRepresentative;
+            this.representativeTokens = Set.copyOf(representativeTokens);
+            this.questions.add(representativeQuestion);
+            this.firstAskedAt = askedAt;
+            this.lastAskedAt = askedAt;
+            this.similaritySum = 1.0;
+            this.similarityCount = 1;
+        }
+
+        void add(String question, LocalDateTime askedAt, double similarity) {
+            questions.add(question);
+            if (askedAt != null && (firstAskedAt == null || askedAt.isBefore(firstAskedAt))) {
+                firstAskedAt = askedAt;
+            }
+            if (askedAt != null && (lastAskedAt == null || askedAt.isAfter(lastAskedAt))) {
+                lastAskedAt = askedAt;
+            }
+            similaritySum += similarity;
+            similarityCount++;
+        }
+
+        int size() {
+            return questions.size();
+        }
+
+        LocalDateTime lastAskedAt() {
+            return lastAskedAt;
+        }
+
+        double averageSimilarity() {
+            return similarityCount == 0 ? 0.0 : similaritySum / similarityCount;
+        }
+
+        List<String> sampleQuestions() {
+            Set<String> uniqueQuestions = new LinkedHashSet<>(questions);
+            return uniqueQuestions.stream().limit(5).toList();
         }
     }
 }

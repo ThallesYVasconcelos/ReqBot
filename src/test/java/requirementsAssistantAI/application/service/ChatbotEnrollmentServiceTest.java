@@ -23,8 +23,9 @@ class ChatbotEnrollmentServiceTest {
         ChatbotConfigRepository chatbotRepository = mock(ChatbotConfigRepository.class);
         ChatbotEnrollmentRepository enrollmentRepository = mock(ChatbotEnrollmentRepository.class);
         AppUserRepository userRepository = mock(AppUserRepository.class);
+        ProjectEnrollmentService projectEnrollmentService = mock(ProjectEnrollmentService.class);
         ChatbotEnrollmentService service = new ChatbotEnrollmentService(
-                codeService, chatbotRepository, enrollmentRepository, userRepository);
+                codeService, chatbotRepository, enrollmentRepository, userRepository, projectEnrollmentService);
         UUID userId = UUID.randomUUID();
         String code = "ABCDE-23456";
         ChatbotConfig chatbot = chatbot(UUID.randomUUID(), codeService.hash(code));
@@ -48,6 +49,7 @@ class ChatbotEnrollmentServiceTest {
         assertThat(result.chatbotId()).isEqualTo(chatbot.getId());
         verify(enrollmentRepository).save(argThat(enrollment ->
                 enrollment.getUser() == user && enrollment.getChatbot() == chatbot));
+        verify(projectEnrollmentService).ensureEnrollment(chatbot.getRequirementSet(), user, chatbot);
     }
 
     private ChatbotConfig chatbot(UUID id, String hash) {
