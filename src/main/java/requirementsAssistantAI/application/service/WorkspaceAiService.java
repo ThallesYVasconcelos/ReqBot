@@ -13,15 +13,14 @@ import requirementsAssistantAI.application.ports.ChatAiService;
 import requirementsAssistantAI.domain.AiProvider;
 import requirementsAssistantAI.domain.Workspace;
 import requirementsAssistantAI.domain.WorkspaceAiConfiguration;
-import requirementsAssistantAI.dto.AiProviderModelsDTO;
 import requirementsAssistantAI.dto.UpdateWorkspaceAiConfigurationRequest;
 import requirementsAssistantAI.dto.WorkspaceAiConfigurationDTO;
 import requirementsAssistantAI.infrastructure.WorkspaceAiConfigurationRepository;
 import requirementsAssistantAI.infrastructure.config.ApiKeyCipher;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -79,10 +78,11 @@ public class WorkspaceAiService {
         configurationRepository.findByWorkspace_Id(workspaceId).ifPresent(configurationRepository::delete);
     }
 
-    public List<AiProviderModelsDTO> availableModels() {
-        return Arrays.stream(AiProvider.values())
-                .map(provider -> new AiProviderModelsDTO(provider, modelsFor(provider)))
-                .toList();
+    public Map<AiProvider, List<String>> availableModels() {
+        return Map.of(
+                AiProvider.OPENAI, modelsFor(AiProvider.OPENAI),
+                AiProvider.GEMINI, modelsFor(AiProvider.GEMINI),
+                AiProvider.ANTHROPIC, modelsFor(AiProvider.ANTHROPIC));
     }
 
     public AssistantAiService assistant(UUID workspaceId) {
@@ -130,8 +130,8 @@ public class WorkspaceAiService {
     private List<String> modelsFor(AiProvider provider) {
         return switch (provider) {
             case OPENAI -> List.of("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "gpt-5-mini", "gpt-5");
-            case GEMINI -> List.of("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash");
-            case ANTHROPIC -> List.of("claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5");
+            case GEMINI -> List.of("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-pro");
+            case ANTHROPIC -> List.of("claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5", "claude-sonnet-4-6", "claude-opus-4-6");
         };
     }
 

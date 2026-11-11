@@ -10,6 +10,7 @@ public class AuthResponse {
     private String tokenType;
     private long expiresIn;
     private String role;
+    private AppUserDTO user;
 
     public AuthResponse() {}
 
@@ -18,5 +19,10 @@ public class AuthResponse {
         this.tokenType = tokenType;
         this.expiresIn = expiresIn;
         this.role = role;
+    }
+
+    public AuthResponse(String accessToken, String tokenType, long expiresIn, String role, AppUserDTO user) {
+        this(accessToken, tokenType, expiresIn, role);
+        this.user = user;
     }
 }

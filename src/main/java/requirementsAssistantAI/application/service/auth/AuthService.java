@@ -9,6 +9,7 @@ import requirementsAssistantAI.application.exception.ForbiddenException;
 import requirementsAssistantAI.domain.AppUser;
 import requirementsAssistantAI.domain.AuthRole;
 import requirementsAssistantAI.dto.AuthResponse;
+import requirementsAssistantAI.dto.AppUserDTO;
 import requirementsAssistantAI.infrastructure.AppUserRepository;
 
 import java.time.Instant;
@@ -76,15 +77,24 @@ public class AuthService {
 
     private AuthResponse issueToken(AppUser user) {
         Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder()
+        JwtClaimsSet.Builder claimsBuilder = JwtClaimsSet.builder()
                 .issuer(issuer)
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(ttlSeconds))
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
-                .claim("role", AuthRole.USER.name())
-                .build();
+                .claim("role", AuthRole.USER.name());
+        if (user.getName() != null && !user.getName().isBlank()) {
+            claimsBuilder.claim("name", user.getName());
+        }
+        if (user.getPictureUrl() != null && !user.getPictureUrl().isBlank()) {
+            claimsBuilder.claim("pictureUrl", user.getPictureUrl());
+        }
+        JwtClaimsSet claims = claimsBuilder.build();
         String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
-        return new AuthResponse(token, "Bearer", ttlSeconds, AuthRole.USER.name());
+        AppUserDTO profile = new AppUserDTO(
+                user.getId(), user.getEmail(), user.getName(), user.getPictureUrl(),
+                user.getRole().name(), user.getCreatedAt(), user.getUpdatedAt());
+        return new AuthResponse(token, "Bearer", ttlSeconds, AuthRole.USER.name(), profile);
     }
 }

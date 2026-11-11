@@ -6,11 +6,12 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import requirementsAssistantAI.application.service.WorkspaceAiService;
-import requirementsAssistantAI.dto.AiProviderModelsDTO;
 import requirementsAssistantAI.dto.UpdateWorkspaceAiConfigurationRequest;
 import requirementsAssistantAI.dto.WorkspaceAiConfigurationDTO;
 
+import requirementsAssistantAI.domain.AiProvider;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -29,7 +30,7 @@ public class WorkspaceAiConfigurationController {
     }
 
     @GetMapping("/models")
-    public ResponseEntity<List<AiProviderModelsDTO>> models(
+    public ResponseEntity<Map<AiProvider, List<String>>> models(
             @PathVariable UUID workspaceId, @AuthenticationPrincipal Jwt jwt) {
         // Também confirma que apenas o owner tenha acesso às opções de configuração.
         workspaceAiService.getConfiguration(workspaceId, userId(jwt));

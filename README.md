@@ -198,7 +198,17 @@ Content-Type: application/json
 }
 ```
 
-Os provedores aceitos são `GEMINI`, `OPENAI` e `ANTHROPIC`. A lista para preencher o seletor de modelo vem de `GET /api/workspaces/{workspaceId}/ai-configuration/models`. A resposta nunca contém a chave: apenas provedor, modelo e os quatro últimos caracteres mascarados.
+Os provedores aceitos são `GEMINI`, `OPENAI` e `ANTHROPIC`. A lista para preencher o seletor de modelo vem de `GET /api/workspaces/{workspaceId}/ai-configuration/models`, no formato:
+
+```json
+{
+  "OPENAI": ["gpt-4o-mini", "gpt-4o"],
+  "GEMINI": ["gemini-2.5-flash"],
+  "ANTHROPIC": ["claude-sonnet-4-5"]
+}
+```
+
+A resposta de configuração nunca contém a chave: apenas provedor, modelo e os quatro últimos caracteres mascarados.
 
 ## Testes
 
