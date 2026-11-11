@@ -22,6 +22,7 @@ class ChatServiceTest {
 
     private ChatMessageRepository chatMessageRepository;
     private ChatAiService chatAiService;
+    private WorkspaceAiService workspaceAiService;
     private ChatbotAccessService accessService;
     private RagRetrievalService ragRetrievalService;
     private ChatService chatService;
@@ -30,11 +31,12 @@ class ChatServiceTest {
     void setUp() {
         chatMessageRepository = mock(ChatMessageRepository.class);
         chatAiService = mock(ChatAiService.class);
+        workspaceAiService = mock(WorkspaceAiService.class);
         accessService = mock(ChatbotAccessService.class);
         ragRetrievalService = mock(RagRetrievalService.class);
 
         chatService = new ChatService(
-                chatMessageRepository, chatAiService, accessService, ragRetrievalService);
+                chatMessageRepository, workspaceAiService, accessService, ragRetrievalService);
     }
 
     @Test
@@ -46,6 +48,8 @@ class ChatServiceTest {
         when(accessService.requireChatAccess(chatbotId, userId)).thenReturn(chatbot);
         when(ragRetrievalService.retrieve(any(), eq(projectId), anyInt(), anyDouble(), anyInt()))
                 .thenReturn("Nenhum requisito salvo encontrado para este projeto.");
+        when(workspaceAiService.chat(chatbot.getWorkspace().getId())).thenReturn(chatAiService);
+        when(workspaceAiService.cacheFingerprint(chatbot.getWorkspace().getId())).thenReturn("test");
         when(chatAiService.answerQuestion(
                 eq("Qual regra vale para a cor da caixa?"),
                 eq("Nenhum requisito salvo encontrado para este projeto.")))
@@ -71,6 +75,8 @@ class ChatServiceTest {
         when(accessService.requireChatAccess(chatbotId, userId)).thenReturn(chatbot);
         when(ragRetrievalService.retrieve(any(), any(), anyInt(), anyDouble(), anyInt()))
                 .thenReturn("Contexto");
+        when(workspaceAiService.chat(chatbot.getWorkspace().getId())).thenReturn(chatAiService);
+        when(workspaceAiService.cacheFingerprint(chatbot.getWorkspace().getId())).thenReturn("test");
         when(chatAiService.answerQuestion(any(), any()))
                 .thenThrow(new RuntimeException("IA indisponível"));
 

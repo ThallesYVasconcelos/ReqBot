@@ -38,6 +38,14 @@ openai.model=gpt-4o-mini
 # Para usar proxies compatíveis com OpenAI (ex.: Groq, Together, LM Studio):
 # openai.base-url=https://api.groq.com/openai/v1
 
+# --- Chaves próprias por workspace (BYOK) ---
+# Obrigatória para cifrar as chaves Gemini, OpenAI e Anthropic informadas pelos owners.
+# Gere 32 bytes seguros e codifique em Base64, por exemplo:
+#   openssl rand -base64 32
+# Não altere este valor sem antes planejar a rotação/recriptografia das chaves existentes.
+ai.credentials.encryption-key=
+# Os embeddings permanecem centralizados no Gemini; o BYOK é usado apenas pelo chat e análise.
+
 # Otimização de tokens (reduz consumo e latência da API)
 ai.context.max-approved-results=5
 ai.context.max-length=2500

@@ -6,7 +6,6 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiEmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.service.AiServices;
 
 import java.time.Duration;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -22,8 +21,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import requirementsAssistantAI.application.ports.AssistantAiService;
-import requirementsAssistantAI.application.ports.ChatAiService;
 
 @Configuration
 public class AssistantConfig {
@@ -137,20 +134,6 @@ public class AssistantConfig {
     @Profile("test")
     public EmbeddingStore<TextSegment> embeddingStoreInMemory() {
         return new InMemoryEmbeddingStore<>();
-    }
-
-    @Bean
-    public AssistantAiService assistantAiService(ChatModel model) {
-        return AiServices.builder(AssistantAiService.class)
-                .chatModel(model)
-                .build();
-    }
-
-    @Bean
-    public ChatAiService chatAiService(ChatModel model) {
-        return AiServices.builder(ChatAiService.class)
-                .chatModel(model)
-                .build();
     }
 
     private String trim(String value) {

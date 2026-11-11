@@ -7,6 +7,7 @@
 
 -- Ordem: dependentes primeiro (FKs)
 DROP TABLE IF EXISTS chat_messages CASCADE;
+DROP TABLE IF EXISTS workspace_ai_configurations CASCADE;
 DROP TABLE IF EXISTS chatbot_config CASCADE;
 DROP TABLE IF EXISTS requirement_history CASCADE;
 DROP TABLE IF EXISTS requirements CASCADE;
@@ -134,3 +135,16 @@ CREATE INDEX idx_chat_messages_requirement_set_id ON chat_messages(requirement_s
 CREATE INDEX idx_chat_messages_workspace_id ON chat_messages(workspace_id);
 CREATE INDEX idx_chat_messages_user_email ON chat_messages(user_email);
 CREATE INDEX idx_chat_messages_asked_at ON chat_messages(asked_at DESC);
+
+CREATE TABLE workspace_ai_configurations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL UNIQUE REFERENCES workspaces(id) ON DELETE CASCADE,
+    provider VARCHAR(20) NOT NULL CHECK (provider IN ('GEMINI', 'OPENAI', 'ANTHROPIC')),
+    model VARCHAR(120) NOT NULL,
+    encrypted_api_key TEXT NOT NULL,
+    encryption_iv VARCHAR(32) NOT NULL,
+    key_hint VARCHAR(16) NOT NULL,
+    key_version VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

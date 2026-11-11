@@ -8,7 +8,6 @@ import requirementsAssistantAI.infrastructure.RequirementRepository;
 import requirementsAssistantAI.infrastructure.RequirementSetRepository;
 import requirementsAssistantAI.infrastructure.EmbeddingSimilarityRepository;
 import requirementsAssistantAI.application.exception.ResourceNotFoundException;
-import requirementsAssistantAI.application.ports.AssistantAiService;
 import requirementsAssistantAI.dto.RequirementDTO;
 import requirementsAssistantAI.dto.RequirementHistoryDTO;
 import requirementsAssistantAI.dto.SaveRequirementRequest;
@@ -47,7 +46,7 @@ public class RequirementService {
     @Value("${ai.report.intention-filter.enabled:false}")
     private boolean intentionFilterEnabled;
 
-    private final AssistantAiService assistantAiService;
+    private final WorkspaceAiService workspaceAiService;
     private final RequirementRepository requirementRepository;
     private final RequirementSetRepository requirementSetRepository;
     private final RequirementHistoryRepository requirementHistoryRepository;
@@ -59,14 +58,14 @@ public class RequirementService {
     private int maxSimilarPairs;
 
     public RequirementService(
-            AssistantAiService assistantAiService,
+            WorkspaceAiService workspaceAiService,
             RequirementRepository requirementRepository,
             RequirementSetRepository requirementSetRepository,
             RequirementHistoryRepository requirementHistoryRepository,
             RagRetrievalService ragRetrievalService,
             ApplicationEventPublisher eventPublisher,
             EmbeddingSimilarityRepository similarityRepository) {
-        this.assistantAiService = assistantAiService;
+        this.workspaceAiService = workspaceAiService;
         this.requirementRepository = requirementRepository;
         this.requirementSetRepository = requirementSetRepository;
         this.requirementHistoryRepository = requirementHistoryRepository;
@@ -84,7 +83,7 @@ public class RequirementService {
         RequirementSet requirementSet = requirementSetRepository.findById(Objects.requireNonNull(requirementSetId))
                 .orElseThrow(() -> new ResourceNotFoundException("RequirementSet (projeto) não encontrado com ID: " + requirementSetId));
 
-        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName(), requirementSet.getDescription());
+        AiRefinementResult result = processWithAI(rawRequirement, requirementSetId.toString(), requirementSet.getName(), requirementSet.getDescription(), workspaceId(requirementSet));
 
         LocalDateTime now = LocalDateTime.now();
         return new RequirementDTO(
@@ -103,7 +102,7 @@ public class RequirementService {
 
     private record AiRefinementResult(String analise, String refinedRequirementText, List<String> ambiguityWarnings) {}
 
-    private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName, String requirementSetDescription) {
+    private AiRefinementResult processWithAI(String rawRequirement, String requirementSetId, String requirementSetName, String requirementSetDescription, UUID workspaceId) {
         String relevantContext = findHybridContext(
                 rawRequirement, requirementSetId, requirementSetName, requirementSetDescription);
 
@@ -114,7 +113,7 @@ public class RequirementService {
 
         while (retryCount <= MAX_RETRIES) {
             try {
-                aiResponse = assistantAiService.refineRequirement(rawRequirement, relevantContext);
+                aiResponse = workspaceAiService.assistant(workspaceId).refineRequirement(rawRequirement, relevantContext);
 
                 if (aiResponse != null && aiResponse.length() >= MIN_RESPONSE_LENGTH) {
                     break;
@@ -132,7 +131,7 @@ public class RequirementService {
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
                 }
-                log.error("IA falhou após todas as tentativas. Verifique GEMINI_API_KEY e logs do Cloud Run.", e);
+                log.error("IA falhou após todas as tentativas. Verifique a configuração de IA do workspace e os logs.", e);
                 aiResponse = null;
                 break;
             }
@@ -198,7 +197,7 @@ public class RequirementService {
         String analise = request.getAnalise();
         List<String> ambiguityWarnings = request.getAmbiguityWarnings();
         if ((analise == null || analise.isBlank()) || (ambiguityWarnings == null || ambiguityWarnings.isEmpty())) {
-            AiRefinementResult analysis = processWithAI(request.getRawRequirement(), request.getRequirementSetId().toString(), requirementSet.getName(), requirementSet.getDescription());
+            AiRefinementResult analysis = processWithAI(request.getRawRequirement(), request.getRequirementSetId().toString(), requirementSet.getName(), requirementSet.getDescription(), workspaceId(requirementSet));
             if (analise == null || analise.isBlank()) analise = analysis.analise();
             if (ambiguityWarnings == null || ambiguityWarnings.isEmpty()) ambiguityWarnings = analysis.ambiguityWarnings();
         }
@@ -491,7 +490,8 @@ public class RequirementService {
         for (Requirement requirement : requirements) {
             List<RequirementReportDTO.ConflictInfo> conflicts = filterByIntent(
                     requirement,
-                    candidatesByRequirement.getOrDefault(requirement.getUuid(), List.of()));
+                    candidatesByRequirement.getOrDefault(requirement.getUuid(), List.of()),
+                    workspaceId(requirementSet));
             boolean hasAmbiguity = requirement.getAmbiguityWarnings() != null
                     && !requirement.getAmbiguityWarnings().isEmpty();
             if (conflicts.isEmpty() && !hasAmbiguity) {
@@ -521,7 +521,7 @@ public class RequirementService {
      * Filtro de intenção em lote: uma única chamada LLM para todos os pares.
      * Se desabilitado, retorna todos os candidatos como conflitos.
      */
-    private List<RequirementReportDTO.ConflictInfo> filterByIntent(Requirement req, List<ConflictCandidate> candidates) {
+    private List<RequirementReportDTO.ConflictInfo> filterByIntent(Requirement req, List<ConflictCandidate> candidates, UUID workspaceId) {
         if (candidates.isEmpty()) return List.of();
 
         if (!intentionFilterEnabled) {
@@ -545,7 +545,7 @@ public class RequirementService {
         prompt.append("Retorne uma linha por par (SIM ou NAO), na ordem Par 1, Par 2, etc.");
 
         try {
-            String response = assistantAiService.verifySameIntentBatch(prompt.toString());
+            String response = workspaceAiService.assistant(workspaceId).verifySameIntentBatch(prompt.toString());
             String[] lines = response != null ? response.split("\\r?\\n") : new String[0];
             List<RequirementReportDTO.ConflictInfo> result = new ArrayList<>();
             String suggestion = "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação.";
@@ -574,5 +574,12 @@ public class RequirementService {
                             "Avalie se os requisitos podem ser consolidados ou se um deles deve ser removido/alterado para evitar duplicação."))
                     .toList();
         }
+    }
+
+    private UUID workspaceId(RequirementSet requirementSet) {
+        if (requirementSet.getWorkspace() == null) {
+            throw new IllegalStateException("O projeto não está associado a um workspace.");
+        }
+        return requirementSet.getWorkspace().getId();
     }
 }

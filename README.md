@@ -46,6 +46,7 @@ SPRING_DATASOURCE_PASSWORD=
 AUTH_JWT_SECRET=
 AUTH_GOOGLE_CLIENT_ID=
 CORS_ALLOWED_ORIGINS=
+AI_CREDENTIALS_ENCRYPTION_KEY=
 ```
 
 Notas importantes:
@@ -59,6 +60,8 @@ Notas importantes:
 - `AUTH_JWT_SECRET` deve ter no mínimo 32 caracteres aleatórios.
 - `AUTH_GOOGLE_CLIENT_ID` vem do Google Cloud Console, no OAuth Client ID do frontend.
 - `CORS_ALLOWED_ORIGINS` deve conter a URL do seu frontend, por exemplo `https://seu-frontend.onrender.com`. Separe múltiplas origens por vírgula.
+- `AI_CREDENTIALS_ENCRYPTION_KEY` deve ser uma chave aleatória de 32 bytes em Base64 (`openssl rand -base64 32`). Ela cifra as chaves BYOK de cada workspace e não pode ser perdida.
+- Os embeddings seguem usando a `GEMINI_API_KEY` global. As chaves próprias dos workspaces alimentam apenas chat e análise de requisitos.
 
 ## Deploy no Render
 
@@ -176,6 +179,26 @@ Eles só influenciam o deploy se um workflow do GitHub Actions mandar esses valo
 - Workspaces: `/api/workspaces`
 - Requisitos: `/api/requirements`
 - Chatbots: `/api/chatbots`
+- IA por workspace: `GET|PUT|DELETE /api/workspaces/{workspaceId}/ai-configuration` (somente OWNER)
+- Modelos suportados: `GET /api/workspaces/{workspaceId}/ai-configuration/models`
+
+### Configuração de IA pelo frontend
+
+O frontend deve enviar a chave somente por HTTPS para o endpoint abaixo, com o JWT do owner:
+
+```http
+PUT /api/workspaces/{workspaceId}/ai-configuration
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "provider": "ANTHROPIC",
+  "model": "claude-sonnet-4-5",
+  "apiKey": "sk-ant-..."
+}
+```
+
+Os provedores aceitos são `GEMINI`, `OPENAI` e `ANTHROPIC`. A lista para preencher o seletor de modelo vem de `GET /api/workspaces/{workspaceId}/ai-configuration/models`. A resposta nunca contém a chave: apenas provedor, modelo e os quatro últimos caracteres mascarados.
 
 ## Testes
 

@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import requirementsAssistantAI.application.ports.ChatAiService;
 import requirementsAssistantAI.domain.ChatMessage;
 import requirementsAssistantAI.domain.ChatbotConfig;
 import requirementsAssistantAI.domain.RequirementSet;
@@ -49,17 +48,17 @@ public class ChatService {
             "nos", "nas", "um", "uma", "para", "por", "com", "que", "qual", "como", "ao");
 
     private final ChatMessageRepository chatMessageRepository;
-    private final ChatAiService chatAiService;
+    private final WorkspaceAiService workspaceAiService;
     private final ChatbotAccessService accessService;
     private final RagRetrievalService ragRetrievalService;
 
     public ChatService(
             ChatMessageRepository chatMessageRepository,
-            ChatAiService chatAiService,
+            WorkspaceAiService workspaceAiService,
             ChatbotAccessService accessService,
             RagRetrievalService ragRetrievalService) {
         this.chatMessageRepository = chatMessageRepository;
-        this.chatAiService = chatAiService;
+        this.workspaceAiService = workspaceAiService;
         this.accessService = accessService;
         this.ragRetrievalService = ragRetrievalService;
     }
@@ -79,7 +78,8 @@ public class ChatService {
 
         String projectId = project.getId().toString();
         // Chatbots do mesmo projeto compartilham respostas em cache e o mesmo RAG.
-        String cacheKey = projectId + "||" + normalizeQuestion(question);
+        String cacheKey = projectId + "||" + workspaceAiService.cacheFingerprint(chatbot.getWorkspace().getId())
+                + "||" + normalizeQuestion(question);
         if (cacheEnabled) {
             CachedAnswer cached = answerCache.get(cacheKey);
             if (cached != null && !cached.isExpired(cacheTtlMinutes)) {
@@ -94,7 +94,7 @@ public class ChatService {
             if (context.isBlank()) {
                 context = "Nenhum requisito salvo ou contexto relevante encontrado para este projeto.";
             }
-            String rawAnswer = chatAiService.answerQuestion(question, context);
+            String rawAnswer = workspaceAiService.chat(chatbot.getWorkspace().getId()).answerQuestion(question, context);
             String answer = rawAnswer == null || rawAnswer.isBlank()
                     ? "Desculpe, não consegui processar sua pergunta. Tente reformulá-la."
                     : sanitizeAnswer(rawAnswer);
